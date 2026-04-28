@@ -2,12 +2,18 @@
 
 A native macOS menu bar app that fetches events from all your Google Calendars and posts a formatted 2-week schedule to Notion — automatically every Monday, or on demand.
 
-![Menu bar screenshot](docs/menubar.png)
+![Menu bar icon](docs/menubar.png)
+
+![Compact popover](docs/popover-idle.png) ![Preview and edit events](docs/popover-preview.png)
+
+![Notion output](docs/notion-result.png)
+
+---
 
 ## Features
 
-- 📅 Hover over the menu bar icon to open a compact popover
-- 🗓️ Fetches events from all connected Google Calendars
+- 🗓️ Hover over the menu bar icon to open a compact popover
+- 📅 Fetches events from all connected Google Calendars
 - ✏️ Preview and edit events before posting
 - 📝 Posts a beautifully formatted day-by-day table to Notion
 - 🔁 Auto-runs every Monday at 7am via launchd
@@ -27,7 +33,7 @@ brew install --cask cal-notion
 Then run the setup script:
 
 ```bash
-cal-notion-setup
+./scripts/install.sh
 ```
 
 ### Option B — Direct download
@@ -69,7 +75,7 @@ chmod +x scripts/install.sh
 2. Create a new integration → copy the **Integration Token**
 3. Open the Notion page you want to post under
 4. Click `···` → Connections → connect your integration
-5. Copy the **Page ID** from the page URL (the 32-char string after the last `/`)
+5. Copy the **Page ID** from the page URL (32-char string after the last `/`)
 
 ### Run setup
 
@@ -91,7 +97,7 @@ The script will:
 2. Hover over the calendar icon in your menu bar
 3. Select how many weeks ahead (1–4)
 4. Click ▶ to fetch and preview events
-5. Toggle calendars, edit or remove individual events
+5. Toggle calendars on/off, edit or remove individual events
 6. Click **Post to Notion →**
 
 ---
@@ -113,7 +119,7 @@ npm start             # runs on localhost:8420
 
 # Swift app
 open CalNotionBar/CalNotionBar.xcodeproj
-# Build and run in Xcode
+# Build and run in Xcode (⌘R)
 ```
 
 ### Releasing a new version
@@ -131,10 +137,10 @@ GitHub Actions will automatically build the `.dmg` and create a release.
 
 ```
 CalNotionBar.app (Swift/SwiftUI)
-  └── spawns → backend (Express + TypeScript)
+  └── spawns → backend (Express + TypeScript) on localhost:8420
                  ├── /calendars  → Google Calendar API
                  ├── /events     → Google Calendar API
-                 ├── /today      → Google Calendar API
+                 ├── /today      → Google Calendar API (badge count)
                  └── /notion     → Notion API
 ```
 
