@@ -2,11 +2,26 @@
 
 A native macOS menu bar app that fetches events from all your Google Calendars and posts a formatted 2-week schedule to Notion — automatically every Monday, or on demand.
 
-![Menu bar icon](docs/menubar.png)
+<br>
 
-![Compact popover](docs/popover-idle.png) ![Preview and edit events](docs/popover-preview.png)
+<table>
+  <tr>
+    <td align="center" width="220">
+      <img src="docs/popover-idle.png" width="200" alt="Compact popover"/><br/>
+      <sub>Hover to open</sub>
+    </td>
+    <td align="center" width="280">
+      <img src="docs/popover-preview.png" width="260" alt="Preview events"/><br/>
+      <sub>Preview &amp; edit events</sub>
+    </td>
+    <td align="center" width="280">
+      <img src="docs/notion-result.png" width="260" alt="Notion output"/><br/>
+      <sub>Posted to Notion</sub>
+    </td>
+  </tr>
+</table>
 
-![Notion output](docs/notion-result.png)
+<br>
 
 ---
 
