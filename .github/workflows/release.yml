@@ -1,0 +1,69 @@
+name: Build and Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  build:
+    runs-on: macos-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install backend dependencies
+        run: |
+          cd backend
+          npm install
+
+      - name: Select Xcode
+        run: sudo xcode-select -s /Applications/Xcode.app
+
+      - name: Build Swift app
+        run: |
+          cd CalNotionBar
+          xcodebuild \
+            -project CalNotionBar.xcodeproj \
+            -scheme CalNotionBar \
+            -configuration Release \
+            -derivedDataPath build \
+            CODE_SIGN_IDENTITY="" \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGNING_ALLOWED=NO
+          cp -r build/Build/Products/Release/CalNotionBar.app ../CalNotionBar.app
+
+      - name: Create .dmg
+        run: |
+          mkdir -p dmg_contents
+          cp -r CalNotionBar.app dmg_contents/
+          ln -s /Applications dmg_contents/Applications
+          hdiutil create \
+            -volname "CalNotion" \
+            -srcfolder dmg_contents \
+            -ov \
+            -format UDZO \
+            CalNotion-${{ github.ref_name }}.dmg
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: CalNotion-${{ github.ref_name }}.dmg
+          body: |
+            ## Cal → Notion ${{ github.ref_name }}
+
+            ### Install
+            1. Download `CalNotion-${{ github.ref_name }}.dmg`
+            2. Open the DMG and drag `CalNotionBar.app` to Applications
+            3. Run `scripts/install.sh` to configure credentials
+            4. Launch from Applications
+
+            See [README](https://github.com/dkeg/cal-notion#readme) for full setup guide.
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

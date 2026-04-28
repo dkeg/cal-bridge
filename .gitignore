@@ -1,0 +1,25 @@
+# Node
+node_modules/
+dist/
+*.js.map
+
+# Environment — never commit secrets
+.env
+backend/.env
+
+# macOS
+.DS_Store
+*.dmg
+*.pkg
+
+# Xcode
+CalNotionBar/build/
+CalNotionBar/*.xcworkspace/xcuserdata/
+CalNotionBar/*.xcodeproj/xcuserdata/
+DerivedData/
+*.ipa
+*.dSYM.zip
+*.dSYM
+
+# Logs
+*.log
