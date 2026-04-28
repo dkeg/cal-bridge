@@ -28,16 +28,19 @@ jobs:
 
       - name: Build Swift app
         run: |
-          cd CalNotionBar
           xcodebuild \
-            -project CalNotionBar.xcodeproj \
+            -project CalNotionBar/CalNotionBar.xcodeproj \
             -scheme CalNotionBar \
             -configuration Release \
             -derivedDataPath build \
-            CODE_SIGN_IDENTITY="" \
+            CODE_SIGN_IDENTITY="-" \
             CODE_SIGNING_REQUIRED=NO \
-            CODE_SIGNING_ALLOWED=NO
-          cp -r build/Build/Products/Release/CalNotionBar.app ../CalNotionBar.app
+            CODE_SIGNING_ALLOWED=NO \
+            ONLY_ACTIVE_ARCH=NO | xcpretty || true
+          
+          APP_PATH=$(find build -name "CalNotionBar.app" -type d | head -1)
+          echo "Found app at: $APP_PATH"
+          cp -r "$APP_PATH" ./CalNotionBar.app
 
       - name: Create .dmg
         run: |
@@ -49,7 +52,7 @@ jobs:
             -srcfolder dmg_contents \
             -ov \
             -format UDZO \
-            CalNotion-${{ github.ref_name }}.dmg
+            "CalNotion-${{ github.ref_name }}.dmg"
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
