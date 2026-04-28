@@ -187,6 +187,27 @@ function buildDayTable(events: CalEvent[]): any {
   };
 }
 
+export async function checkExistingPage(
+  start: string,
+  end: string
+): Promise<{ url: string | null; id: string | null; title: string } | null> {
+  const notion = getNotionClient();
+  const title = `Upcoming Events — ${start} to ${end}`;
+  try {
+    const results = await notion.search({
+      query: title,
+      filter: { property: "object", value: "page" },
+    });
+    const match = results.results.find(
+      (p: any) => p.properties?.title?.title?.[0]?.plain_text === title
+    );
+    if (match) {
+      return { url: (match as any).url, id: match.id, title };
+    }
+  } catch { }
+  return null;
+}
+
 export async function createNotionPage(
   days: DayGroup[],
   start: string,
