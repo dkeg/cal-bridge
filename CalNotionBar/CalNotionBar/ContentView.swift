@@ -19,6 +19,7 @@ class AgentViewModel: ObservableObject {
     @Published var editingEventID: UUID? = nil
     @Published var editTitle = ""
     @Published var nextEvent: CalEvent? = nil
+    @Published var notionExisted = false
 
     var totalEvents: Int { days.reduce(0) { $0 + $1.events.count } }
 
