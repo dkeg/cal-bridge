@@ -29,14 +29,6 @@ A native macOS menu bar app that fetches events from all your Google Calendars a
 
 ▶ [Watch the demo on Loom](https://www.loom.com/share/20bf6148ad0d41f1aa7a11e7843245d0)
 
-## Demo
-
-[![Watch the demo](https://cdn.loom.com/sessions/thumbnails/20bf6148ad0d41f1aa7a11e7843245d0-with-play.jpg)](https://www.loom.com/share/20bf6148ad0d41f1aa7a11e7843245d0)
-
-## Demo
-
-[![Watch the demo](https://cdn.loom.com/sessions/thumbnails/20bf6148ad0d41f1aa7a11e7843245d0-00001.gif)](https://www.loom.com/share/20bf6148ad0d41f1aa7a11e7843245d0)
-
 ## Features
 
 - 🗓️ Hover over the menu bar icon to open a compact popover
