@@ -1,6 +1,6 @@
 # Cal → Notion
 
-A native macOS menu bar app that fetches events from all your Google Calendars and posts a formatted 2-week schedule to Notion — automatically every Monday, or on demand.
+A native macOS menu bar app that fetches events from all your Google Calendars and posts a formatted weekly schedule to Notion — automatically every Sunday night, or on demand.
 
 <br>
 
@@ -31,11 +31,14 @@ A native macOS menu bar app that fetches events from all your Google Calendars a
 
 ## Features
 
-- 🗓️ Hover over the menu bar icon to open a compact popover
-- 📅 Fetches events from all connected Google Calendars
+- 🗓️ Hover over the menu bar icon — events load automatically, no button needed
+- 📅 Fetches 1 week by default; modify to 1–4 weeks inline
 - ✏️ Preview and edit events before posting
 - 📝 Posts a beautifully formatted day-by-day table to Notion
-- 🔁 Auto-runs every Monday at 7am via launchd
+- 🔁 Auto-runs every Sunday at 9 PM via launchd
+- ✉️ Email notification on every post (manual and autorun)
+- 💾 Persists posted state across relaunches — shows "Open in Notion" when already posted
+- ✨ Autorun banner shows when the Sunday sync has fired
 - ⚠️ Warns if a page for that date range already exists
 
 ---
@@ -78,6 +81,7 @@ chmod +x scripts/install.sh
 - Node.js 18+ (`brew install node`)
 - A Google account
 - A Notion account
+- A [Resend](https://resend.com) account (free tier, for email notifications)
 
 ### Google Calendar API
 
@@ -96,6 +100,12 @@ chmod +x scripts/install.sh
 4. Click `···` → Connections → connect your integration
 5. Copy the **Page ID** from the page URL (32-char string after the last `/`)
 
+### Resend (email notifications)
+
+1. Sign up at [resend.com](https://resend.com)
+2. Copy your **API Key** from the dashboard
+3. Add it to your `.env` as `RESEND_API_KEY`
+
 ### Run setup
 
 ```bash
@@ -106,18 +116,39 @@ The script will:
 - Install Node dependencies
 - Collect your credentials and write `.env`
 - Open a browser for Google OAuth (gets your refresh token)
-- Optionally set up the weekly Monday auto-run
+- Optionally set up the Sunday night auto-run
 
 ---
 
 ## Usage
 
 1. Launch `CalNotionBar.app` from `/Applications`
-2. Hover over the calendar icon in your menu bar
-3. Select how many weeks ahead (1–4)
-4. Click ▶ to fetch and preview events
-5. Toggle calendars on/off, edit or remove individual events
-6. Click **Post to Notion →**
+2. Hover over the calendar icon — events load automatically
+3. Optionally click **Modify** to change the number of weeks (1–4)
+4. Toggle calendars on/off, edit or remove individual events
+5. Click **Post to Notion →** to post
+6. Button changes to **Open in Notion** once posted — persists across relaunches
+
+---
+
+## Autorun
+
+The app runs automatically every Sunday at 9 PM via a launchd agent. After firing it:
+- Writes a flag file to `~/Library/Application Support/CalNotionBar/last-run.json`
+- Sends an email notification to your configured address
+- Shows an "Auto-synced" banner the next time you open the popover
+
+To set up or recreate the launchd agent:
+
+```bash
+launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.drewcraig.cal-notion-autorun.plist
+```
+
+To test manually:
+
+```bash
+node ~/Projects/cal-notion-v3/backend/dist/autorun.js
+```
 
 ---
 
@@ -136,6 +167,9 @@ npm install
 npx ts-node auth.ts   # get Google refresh token
 npm start             # runs on localhost:8420
 
+# Compile autorun
+npx tsc autorun.ts --outDir dist --esModuleInterop --resolveJsonModule --module commonjs --target es2020
+
 # Swift app
 open CalNotionBar/CalNotionBar.xcodeproj
 # Build and run in Xcode (⌘R)
@@ -144,8 +178,8 @@ open CalNotionBar/CalNotionBar.xcodeproj
 ### Releasing a new version
 
 ```bash
-git tag v1.0.1
-git push origin v1.0.1
+git tag v1.1.0
+git push origin v1.1.0
 ```
 
 GitHub Actions will automatically build the `.dmg` and create a release.
@@ -160,7 +194,14 @@ CalNotionBar.app (Swift/SwiftUI)
                  ├── /calendars  → Google Calendar API
                  ├── /events     → Google Calendar API
                  ├── /today      → Google Calendar API (badge count)
-                 └── /notion     → Notion API
+                 └── /notion     → Notion API + Resend email
+
+launchd agent (Sunday 9 PM)
+  └── dist/autorun.js
+        ├── fetches 1 week of events
+        ├── posts to Notion
+        ├── sends email via Resend
+        └── writes ~/Library/Application Support/CalNotionBar/last-run.json
 ```
 
 ---
@@ -174,6 +215,7 @@ CalNotionBar.app (Swift/SwiftUI)
 | `GOOGLE_REFRESH_TOKEN` | Long-lived refresh token (from `auth.ts`) |
 | `NOTION_API_KEY` | Notion integration token |
 | `NOTION_PARENT_PAGE_ID` | ID of the parent Notion page |
+| `RESEND_API_KEY` | Resend API key for email notifications |
 | `PORT` | Backend port (default: 8420) |
 
 ---
