@@ -9,6 +9,7 @@ import {
   groupByDay,
   dateRange,
   todayString,
+  sendNotification,
   Calendar,
   DayGroup,
 } from "./agent";
@@ -19,8 +20,6 @@ app.use(express.json());
 
 const PORT = process.env.PORT ?? 8420;
 
-// ── Health ────────────────────────────────────────────────────────────────
-
 app.get("/health", (_req, res) => {
   const missing = [];
   if (!process.env.GOOGLE_CLIENT_ID) missing.push("GOOGLE_CLIENT_ID");
@@ -29,8 +28,6 @@ app.get("/health", (_req, res) => {
   if (!process.env.NOTION_API_KEY) missing.push("NOTION_API_KEY");
   res.json({ ok: missing.length === 0, missing, ts: new Date().toISOString() });
 });
-
-// ── GET /calendars ────────────────────────────────────────────────────────
 
 app.get("/calendars", async (_req, res) => {
   try {
@@ -41,8 +38,6 @@ app.get("/calendars", async (_req, res) => {
     res.status(500).json({ error: e.message });
   }
 });
-
-// ── GET /today ────────────────────────────────────────────────────────────
 
 app.get("/today", async (_req, res) => {
   try {
@@ -55,8 +50,6 @@ app.get("/today", async (_req, res) => {
     res.status(500).json({ error: e.message });
   }
 });
-
-// ── POST /events ──────────────────────────────────────────────────────────
 
 app.post("/events", async (req, res) => {
   try {
@@ -73,8 +66,6 @@ app.post("/events", async (req, res) => {
   }
 });
 
-// ── POST /notion ──────────────────────────────────────────────────────────
-
 app.post("/notion", async (req, res) => {
   try {
     const {
@@ -83,21 +74,30 @@ app.post("/notion", async (req, res) => {
       end,
     }: { days: DayGroup[]; start: string; end: string } = req.body;
 
-    // Check for existing page first
     const existing = await checkExistingPage(start, end);
     if (existing) {
+      sendNotification({ title: existing.title ?? "", url: existing.url, start, end, eventCount: days.reduce((sum, d) => sum + d.events.length, 0), source: "manual" }).catch(e => console.error("[notify]", e.message));
       return res.json({ ...existing, existed: true });
     }
 
     const result = await createNotionPage(days, start, end);
+
+    const eventCount = days.reduce((sum, d) => sum + d.events.length, 0);
+    sendNotification({
+      title: result.title,
+      url: result.url,
+      start,
+      end,
+      eventCount,
+      source: "manual",
+    }).catch(e => console.error("[notify]", e.message));
+
     res.json({ ...result, existed: false });
   } catch (e: any) {
     console.error("[/notion]", e.message);
     res.status(500).json({ error: e.message });
   }
 });
-
-// ── Start ─────────────────────────────────────────────────────────────────
 
 app.listen(PORT, () => {
   console.log(`\n✅ cal-notion backend running on http://localhost:${PORT}`);

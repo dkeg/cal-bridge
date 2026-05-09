@@ -358,3 +358,60 @@ export function groupByDay(events: CalEvent[]): DayGroup[] {
     .sort()
     .map((date) => ({ date, events: grouped[date] }));
 }
+
+// ── Email Notification ────────────────────────────────────────────────────
+
+export async function sendNotification({
+  title,
+  url,
+  start,
+  end,
+  eventCount,
+  source = "manual",
+}: {
+  title: string;
+  url: string | null;
+  start: string;
+  end: string;
+  eventCount: number;
+  source?: "manual" | "autorun";
+}): Promise<void> {
+  const apiKey = process.env.RESEND_API_KEY;
+  if (!apiKey) {
+    console.warn("[notify] RESEND_API_KEY not set — skipping email");
+    return;
+  }
+
+  const label = source === "autorun" ? "Auto-synced" : "Posted";
+  const notionLink = url ? `<a href="${url}">${title}</a>` : title;
+
+  const html = `
+    <div style="font-family: sans-serif; max-width: 480px;">
+      <h3 style="margin-bottom: 4px;">📅 Cal-Notion — ${label}</h3>
+      <p style="color: #555; margin-top: 0;">${start} → ${end} · ${eventCount} events</p>
+      <p>${notionLink}</p>
+      ${source === "autorun" ? `<p style="color: #888; font-size: 12px;">Sent automatically by your Sunday night autorun.</p>` : ""}
+    </div>
+  `;
+
+  const res = await fetch("https://api.resend.com/emails", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${apiKey}`,
+    },
+    body: JSON.stringify({
+      from: "onboarding@resend.dev",
+      to: "drewrcraig.9@gmail.com",
+      subject: `Cal-Notion ${label}: ${title}`,
+      html,
+    }),
+  });
+
+  if (!res.ok) {
+    const err = await res.text();
+    console.error("[notify] Resend error:", err);
+  } else {
+    console.log(`[notify] Email sent — ${title}`);
+  }
+}

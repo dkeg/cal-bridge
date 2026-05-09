@@ -1,18 +1,16 @@
 import SwiftUI
 import Combine
 
-// MARK: - ViewModel
-
 @MainActor
 class AgentViewModel: ObservableObject {
-    enum Step { case idle, discovering, fetching, preview, posting, done, error }
+    enum Step { case idle, fetching, preview, posting, done, error }
 
     @Published var step: Step = .idle
     @Published var calendars: [CalendarItem] = []
     @Published var days: [DayGroup] = []
     @Published var start = ""
     @Published var end = ""
-    @Published var weeksAhead = 2
+    @Published var weeksAhead = 1
     @Published var notionURL: String? = nil
     @Published var notionTitle: String? = nil
     @Published var errorMsg: String? = nil
@@ -20,8 +18,126 @@ class AgentViewModel: ObservableObject {
     @Published var editTitle = ""
     @Published var nextEvent: CalEvent? = nil
     @Published var notionExisted = false
+    @Published var showModify = false
+    @Published var pendingWeeks = 1
+    @Published var persistedNotionURL: String? = nil
+    @Published var persistedNotionTitle: String? = nil
+    @Published var persistedStart: String? = nil
+    @Published var persistedEnd: String? = nil
+    @Published var autorunFiredAt: Date? = nil
+    @Published var isAutorun: Bool = false
+
+    private let defaults = UserDefaults.standard
+    private let supportDir: URL = {
+        let dir = FileManager.default.homeDirectoryForCurrentUser
+            .appendingPathComponent("Library/Application Support/CalNotionBar")
+        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        return dir
+    }()
 
     var totalEvents: Int { days.reduce(0) { $0 + $1.events.count } }
+
+    var currentRangeIsPosted: Bool {
+        guard let ps = persistedStart, let pe = persistedEnd,
+              !start.isEmpty, !end.isEmpty else { return false }
+        return ps == start && pe == end
+    }
+
+    var effectiveNotionURL: String? { notionURL ?? (currentRangeIsPosted ? persistedNotionURL : nil) }
+
+    func loadPersistedState() {
+        persistedNotionURL = defaults.string(forKey: "lastNotionURL")
+        persistedNotionTitle = defaults.string(forKey: "lastNotionTitle")
+        persistedStart = defaults.string(forKey: "lastStart")
+        persistedEnd = defaults.string(forKey: "lastEnd")
+
+        let flagURL = supportDir.appendingPathComponent("last-run.json")
+        if let data = try? Data(contentsOf: flagURL),
+           let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
+            let isoFormatter = ISO8601DateFormatter()
+            if let firedStr = json["firedAt"] as? String,
+               let firedDate = isoFormatter.date(from: firedStr) {
+                let lastSeen = defaults.object(forKey: "lastSeenAutorunDate") as? Date
+                if lastSeen == nil || firedDate > lastSeen! {
+                    autorunFiredAt = firedDate
+                    isAutorun = true
+                    if let url = json["notionURL"] as? String { persistedNotionURL = url }
+                    if let title = json["notionTitle"] as? String { persistedNotionTitle = title }
+                    if let s = json["start"] as? String { persistedStart = s }
+                    if let e = json["end"] as? String { persistedEnd = e }
+                }
+            }
+        }
+    }
+
+    func markAutorunSeen() {
+        if let date = autorunFiredAt {
+            defaults.set(date, forKey: "lastSeenAutorunDate")
+        }
+        isAutorun = false
+        autorunFiredAt = nil
+    }
+
+    func savePostedState() {
+        defaults.set(notionURL, forKey: "lastNotionURL")
+        defaults.set(notionTitle, forKey: "lastNotionTitle")
+        defaults.set(start, forKey: "lastStart")
+        defaults.set(end, forKey: "lastEnd")
+        persistedNotionURL = notionURL
+        persistedNotionTitle = notionTitle
+        persistedStart = start
+        persistedEnd = end
+    }
+
+    func autoLoad() async {
+        guard step == .idle else { return }
+        step = .fetching
+        loadPersistedState()
+        await fetchEvents()
+    }
+
+    func fetchEvents() async {
+        errorMsg = nil
+        step = .fetching
+        do {
+            if calendars.isEmpty {
+                calendars = try await APIClient.shared.fetchCalendars()
+            }
+            let result = try await APIClient.shared.fetchEvents(calendars: calendars, weeksAhead: weeksAhead)
+            days = groupByDay(result.events)
+            start = result.start
+            end = result.end
+            notionURL = nil
+            step = .preview
+            AppDelegate.shared?.resizePopover(width: 420, height: 580)
+        } catch {
+            errorMsg = error.localizedDescription
+            step = .error
+            AppDelegate.shared?.resizePopover(width: 420, height: 80)
+        }
+    }
+
+    func applyModify() async {
+        weeksAhead = pendingWeeks
+        showModify = false
+        notionURL = nil
+        await fetchEvents()
+    }
+
+    func post() async {
+        step = .posting
+        do {
+            let result = try await APIClient.shared.postToNotion(days: days, start: start, end: end)
+            notionURL = result.url
+            notionTitle = result.title
+            notionExisted = result.existed ?? false
+            savePostedState()
+            step = .done
+        } catch {
+            errorMsg = error.localizedDescription
+            step = .error
+        }
+    }
 
     func fetchNextEvent() {
         guard let url = URL(string: "http://localhost:8420/today") else { return }
@@ -31,7 +147,6 @@ class AgentViewModel: ObservableObject {
                   let eventsRaw = json["events"] as? [[String: Any]] else { return }
             let now = Date()
             let fmt = ISO8601DateFormatter()
-            // Find next upcoming event
             let upcoming = eventsRaw.compactMap { dict -> (Date, CalEvent)? in
                 guard let startStr = dict["start"] as? String,
                       let startDate = fmt.date(from: startStr),
@@ -46,41 +161,8 @@ class AgentViewModel: ObservableObject {
                 )
                 return (startDate, e)
             }.sorted { $0.0 < $1.0 }.first
-            DispatchQueue.main.async {
-                self?.nextEvent = upcoming?.1
-            }
+            DispatchQueue.main.async { self?.nextEvent = upcoming?.1 }
         }.resume()
-    }
-
-    func run() async {
-        errorMsg = nil
-        notionURL = nil
-
-        step = .discovering
-        do { calendars = try await APIClient.shared.fetchCalendars() }
-        catch { errorMsg = error.localizedDescription; step = .error; return }
-
-        step = .fetching
-        do {
-            let result = try await APIClient.shared.fetchEvents(calendars: calendars, weeksAhead: weeksAhead)
-            days = groupByDay(result.events)
-            start = result.start
-            end = result.end
-        } catch { errorMsg = error.localizedDescription; step = .error; return }
-
-        step = .preview
-        AppDelegate.shared?.resizePopover(width: 420, height: 580)
-    }
-
-    func post() async {
-        step = .posting
-        do {
-            let result = try await APIClient.shared.postToNotion(days: days, start: start, end: end)
-            notionURL = result.url
-            notionTitle = result.title
-            notionExisted = result.existed ?? false
-            step = .done
-        } catch { errorMsg = error.localizedDescription; step = .error }
     }
 
     func removeEvent(dayIdx: Int, eventID: UUID) {
@@ -107,45 +189,52 @@ class AgentViewModel: ObservableObject {
         days = []
         notionURL = nil
         errorMsg = nil
-        AppDelegate.shared?.resizePopover(width: 280, height: 160)
+        showModify = false
+    }
+
+    var autorunLabel: String {
+        guard let date = autorunFiredAt else { return "" }
+        let fmt = DateFormatter()
+        fmt.dateFormat = "EEEE, MMM d 'at' h:mm a"
+        return "Auto-synced \(fmt.string(from: date))"
     }
 }
-
-// MARK: - Main View
 
 struct ContentView: View {
     @StateObject var vm = AgentViewModel()
 
     var body: some View {
         VStack(spacing: 0) {
-            // Header always visible
             header
             Divider()
-
-            if vm.step == .idle || vm.step == .error {
-                compactBody
-            } else if vm.step == .discovering || vm.step == .fetching || vm.step == .posting {
+            if vm.step == .fetching || vm.step == .posting {
                 loadingView
+            } else if vm.step == .error {
+                errorView
+                Divider()
+                errorFooter
             } else {
                 ScrollView {
-                    VStack(alignment: .leading, spacing: 16) {
-                        switch vm.step {
-                        case .preview, .done: previewView
-                        case .error: errorView
-                        default: EmptyView()
-                        }
+                    VStack(alignment: .leading, spacing: 14) {
+                        calendarChips
+                        if vm.showModify { modifyPanel }
+                        metaLine
+                        eventList
                     }
-                    .padding(16)
+                    .padding(14)
                 }
                 Divider()
                 footer
             }
         }
         .background(Color(NSColor.windowBackgroundColor))
-        .onAppear { vm.fetchNextEvent() }
+        .frame(width: 420)
+        .onAppear {
+            vm.fetchNextEvent()
+            Task { await vm.autoLoad() }
+        }
     }
 
-    // MARK: Header
     var header: some View {
         HStack {
             Image(systemName: "calendar.badge.clock")
@@ -154,105 +243,17 @@ struct ContentView: View {
             Text("Calendar → Notion")
                 .font(.system(size: 13, weight: .medium))
             Spacer()
-            if vm.step != .idle && vm.step != .error {
-                StepIndicator(step: vm.step)
+            if vm.step == .fetching || vm.step == .posting {
+                ProgressView().scaleEffect(0.6)
             }
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 10)
     }
 
-    // MARK: Compact idle body
-    var compactBody: some View {
-        VStack(spacing: 12) {
-            // Next event
-            if let next = vm.nextEvent {
-                HStack(spacing: 6) {
-                    Image(systemName: "clock")
-                        .font(.system(size: 11))
-                        .foregroundColor(.secondary)
-                    Text("Next: \(next.title)")
-                        .font(.system(size: 12))
-                        .foregroundColor(.secondary)
-                        .lineLimit(1)
-                    Spacer()
-                    Text(next.timeLabel)
-                        .font(.system(size: 11))
-                        .foregroundColor(.secondary)
-                }
-                .padding(.horizontal, 14)
-            } else {
-                Text("No more events today")
-                    .font(.system(size: 12))
-                    .foregroundColor(.secondary)
-                    .padding(.horizontal, 14)
-            }
-
-            Divider()
-                .padding(.horizontal, 14)
-
-            // Weeks + play button
-            HStack(spacing: 8) {
-                Text("Weeks")
-                    .font(.system(size: 12))
-                    .foregroundColor(.secondary)
-
-                HStack(spacing: 4) {
-                    ForEach([1, 2, 3, 4], id: \.self) { w in
-                        Button("\(w)") { vm.weeksAhead = w }
-                            .buttonStyle(PillButtonStyle(selected: vm.weeksAhead == w))
-                    }
-                }
-
-                Spacer()
-
-                // Play button
-                Button {
-                    Task { await vm.run() }
-                } label: {
-                    Image(systemName: "play.circle.fill")
-                        .font(.system(size: 28))
-                        .foregroundColor(.accentColor)
-                }
-                .buttonStyle(.plain)
-                .help("Fetch and post to Notion")
-            }
-            .padding(.horizontal, 14)
-            .padding(.bottom, 4)
-        }
-        .padding(.vertical, 10)
-        .frame(width: 280)
-    }
-
-    // MARK: Loading
-    var loadingView: some View {
-        HStack(spacing: 10) {
-            ProgressView()
-                .scaleEffect(0.8)
-            Text(loadingMessage)
-                .font(.system(size: 12))
-                .foregroundColor(.secondary)
-                .lineLimit(1)
-            Spacer()
-        }
-        .padding(.horizontal, 14)
-        .padding(.vertical, 12)
-        .frame(width: 280)
-    }
-
-    var loadingMessage: String {
-        switch vm.step {
-        case .discovering: return "Discovering your calendars…"
-        case .fetching: return "Fetching \(vm.weeksAhead * 7) days of events…"
-        case .posting: return "Creating Notion page…"
-        default: return ""
-        }
-    }
-
-    // MARK: Preview
-    var previewView: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            if !vm.calendars.isEmpty && vm.step == .preview {
+    var calendarChips: some View {
+        Group {
+            if !vm.calendars.isEmpty {
                 VStack(alignment: .leading, spacing: 6) {
                     Text("Calendars — tap to toggle")
                         .font(.caption)
@@ -265,53 +266,126 @@ struct ContentView: View {
                     }
                 }
             }
+        }
+    }
 
-            if vm.step == .done, let title = vm.notionTitle {
-                HStack {
-                    Image(systemName: vm.notionExisted ? "exclamationmark.triangle.fill" : "checkmark.circle.fill")
-                        .foregroundColor(vm.notionExisted ? .orange : .green)
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text(vm.notionExisted ? "Page already existed" : "Notion page created")
-                            .font(.caption).foregroundColor(.secondary)
-                        Text(title).font(.caption2).foregroundColor(.secondary)
-                    }
-                    Spacer()
-                }
-                .padding(10)
-                .background(vm.notionExisted ? Color.orange.opacity(0.1) : Color.green.opacity(0.1))
-                .cornerRadius(8)
-            }
-
-            Text("\(vm.totalEvents) events · \(vm.days.count) days · \(vm.start) → \(vm.end)")
+    var modifyPanel: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("Weeks to sync")
                 .font(.caption)
                 .foregroundColor(.secondary)
-
-            ForEach(Array(vm.days.enumerated()), id: \.element.id) { di, day in
-                VStack(alignment: .leading, spacing: 4) {
-                    Text(day.displayDate)
-                        .font(.subheadline)
-                        .fontWeight(.medium)
-                        .padding(.bottom, 2)
-
-                    ForEach(Array(day.events.enumerated()), id: \.element.id) { _, event in
-                        EventRow(
-                            event: event,
-                            isEditing: vm.editingEventID == event.id,
-                            editTitle: $vm.editTitle,
-                            onEdit: { vm.editingEventID = event.id; vm.editTitle = event.title },
-                            onSave: { vm.saveEdit(dayIdx: di, eventID: event.id) },
-                            onCancel: { vm.editingEventID = nil },
-                            onRemove: { vm.removeEvent(dayIdx: di, eventID: event.id) }
-                        )
+            HStack(spacing: 6) {
+                ForEach([1, 2, 3, 4], id: \.self) { w in
+                    Button(action: { vm.pendingWeeks = w }) {
+                        Text("\(w) wk")
+                            .font(.system(size: 12, weight: .medium))
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 5)
+                            .background(vm.pendingWeeks == w ? Color.accentColor : Color.secondary.opacity(0.15))
+                            .foregroundColor(vm.pendingWeeks == w ? .white : .primary)
+                            .cornerRadius(99)
                     }
+                    .buttonStyle(.plain)
+                }
+                Spacer()
+                Button("Cancel") {
+                    vm.showModify = false
+                    vm.pendingWeeks = vm.weeksAhead
+                }
+                .font(.system(size: 12))
+                .foregroundColor(.secondary)
+                .buttonStyle(.plain)
+                Button("Apply") { Task { await vm.applyModify() } }
+                    .font(.system(size: 12, weight: .medium))
+                    .buttonStyle(.borderedProminent)
+                    .controlSize(.regular)
+            }
+        }
+        .padding(12)
+        .background(Color(NSColor.controlBackgroundColor))
+        .cornerRadius(8)
+    }
+
+    var metaLine: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            if vm.isAutorun {
+                HStack(spacing: 5) {
+                    Image(systemName: "sparkles")
+                        .font(.system(size: 10))
+                        .foregroundColor(.accentColor)
+                    Text(vm.autorunLabel)
+                        .font(.caption2)
+                        .foregroundColor(.accentColor)
+                    Spacer()
+                    Button("Dismiss") { vm.markAutorunSeen() }
+                        .font(.caption2)
+                        .foregroundColor(.secondary)
+                        .buttonStyle(.plain)
+                }
+                .padding(.horizontal, 8)
+                .padding(.vertical, 5)
+                .background(Color.accentColor.opacity(0.08))
+                .cornerRadius(6)
+            }
+            HStack(spacing: 4) {
+                Text("\(vm.totalEvents) events · \(vm.days.count) days · \(vm.start) → \(vm.end)")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+                if vm.currentRangeIsPosted && vm.notionURL == nil {
+                    Text("· ✓ posted")
+                        .font(.caption)
+                        .foregroundColor(.green.opacity(0.8))
+                }
+            }
+            if vm.step == .done, let title = vm.notionTitle {
+                HStack(spacing: 6) {
+                    Image(systemName: vm.notionExisted ? "exclamationmark.triangle.fill" : "checkmark.circle.fill")
+                        .foregroundColor(vm.notionExisted ? .orange : .green)
+                        .font(.caption)
+                    Text(vm.notionExisted ? "Page already existed — \(title)" : "Posted — \(title)")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
                 }
             }
         }
     }
 
-    // MARK: Error
+    var eventList: some View {
+        ForEach(Array(vm.days.enumerated()), id: \.element.id) { di, day in
+            VStack(alignment: .leading, spacing: 4) {
+                Text(day.displayDate)
+                    .font(.subheadline)
+                    .fontWeight(.medium)
+                    .padding(.bottom, 2)
+                ForEach(Array(day.events.enumerated()), id: \.element.id) { _, event in
+                    EventRow(
+                        event: event,
+                        isEditing: vm.editingEventID == event.id,
+                        editTitle: $vm.editTitle,
+                        onEdit: { vm.editingEventID = event.id; vm.editTitle = event.title },
+                        onSave: { vm.saveEdit(dayIdx: di, eventID: event.id) },
+                        onCancel: { vm.editingEventID = nil },
+                        onRemove: { vm.removeEvent(dayIdx: di, eventID: event.id) }
+                    )
+                }
+            }
+        }
+    }
+
+    var loadingView: some View {
+        HStack(spacing: 10) {
+            ProgressView().scaleEffect(0.8)
+            Text(vm.step == .posting ? "Creating Notion page…" : "Fetching \(vm.weeksAhead * 7) days of events…")
+                .font(.system(size: 12))
+                .foregroundColor(.secondary)
+            Spacer()
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 20)
+    }
+
     var errorView: some View {
-        VStack(spacing: 12) {
+        VStack(spacing: 10) {
             Image(systemName: "exclamationmark.triangle")
                 .font(.largeTitle)
                 .foregroundColor(.red)
@@ -321,38 +395,53 @@ struct ContentView: View {
                 .multilineTextAlignment(.center)
         }
         .frame(maxWidth: .infinity)
-        .padding(.top, 40)
+        .padding(.vertical, 30)
     }
 
-    // MARK: Footer
+    var errorFooter: some View {
+        HStack {
+            Spacer()
+            Button("Try again") { Task { await vm.fetchEvents() } }
+                .buttonStyle(.borderedProminent)
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 10)
+    }
+
     var footer: some View {
         HStack(spacing: 8) {
-            if vm.step == .error {
-                Button("Try again") { Task { await vm.run() } }
-                    .buttonStyle(.borderedProminent)
+            Button {
+                vm.pendingWeeks = vm.weeksAhead
+                vm.showModify.toggle()
+            } label: {
+                Label("Modify", systemImage: "slider.horizontal.3")
+                    .font(.system(size: 12))
             }
-            if vm.step == .preview {
-                Button("↻ Re-fetch") { Task { await vm.run() } }
-                Spacer()
+            .buttonStyle(.bordered)
+            .controlSize(.regular)
+
+            Spacer()
+
+            if let url = vm.effectiveNotionURL, let nsURL = URL(string: url) {
+                Button {
+                    NSWorkspace.shared.open(nsURL)
+                } label: {
+                    Label("Open in Notion", systemImage: "arrow.up.right.square")
+                        .font(.system(size: 12))
+                }
+                .buttonStyle(.borderedProminent)
+                .controlSize(.regular)
+            } else {
                 Button("Post to Notion →") { Task { await vm.post() } }
                     .buttonStyle(.borderedProminent)
-            }
-            if vm.step == .done {
-                Button("Start over") { vm.reset() }
-                if let url = vm.notionURL, let nsURL = URL(string: url) {
-                    Spacer()
-                    Button("Open in Notion ↗") { NSWorkspace.shared.open(nsURL) }
-                        .buttonStyle(.borderedProminent)
-                }
+                    .controlSize(.regular)
+                    .disabled(vm.step == .fetching || vm.step == .posting)
             }
         }
-        .controlSize(.regular)
-        .padding(.horizontal, 16)
+        .padding(.horizontal, 14)
         .padding(.vertical, 10)
     }
 }
-
-// MARK: - Event Row
 
 struct EventRow: View {
     let event: CalEvent
@@ -394,26 +483,6 @@ struct EventRow: View {
     }
 }
 
-// MARK: - Step Indicator
-
-struct StepIndicator: View {
-    let step: AgentViewModel.Step
-    let order: [AgentViewModel.Step] = [.discovering, .fetching, .preview, .posting, .done]
-    var currentIndex: Int { order.firstIndex(of: step) ?? 0 }
-
-    var body: some View {
-        HStack(spacing: 4) {
-            ForEach(0..<order.count, id: \.self) { i in
-                Circle()
-                    .fill(i < currentIndex ? Color.green : i == currentIndex ? Color.accentColor : Color.secondary.opacity(0.3))
-                    .frame(width: 6, height: 6)
-            }
-        }
-    }
-}
-
-// MARK: - Button Styles
-
 struct PillButtonStyle: ButtonStyle {
     let selected: Bool
     func makeBody(configuration: Configuration) -> some View {
@@ -441,8 +510,6 @@ struct ChipButtonStyle: ButtonStyle {
     }
 }
 
-// MARK: - Flow Layout
-
 struct FlowLayout: Layout {
     var spacing: CGFloat = 6
     func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
@@ -465,4 +532,3 @@ struct FlowLayout: Layout {
         }
     }
 }
-

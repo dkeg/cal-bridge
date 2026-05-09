@@ -22,9 +22,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
         startBackend()
 
-        // Set up status bar
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
-        updateMenuBarTitle(count: nil)
+        updateMenuBarTitle()
 
         if let button = statusItem?.button {
             button.action = #selector(togglePopover)
@@ -32,19 +31,16 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             button.sendAction(on: [.leftMouseUp, .rightMouseUp])
         }
 
-        // Set up popover
         let popover = NSPopover()
-        popover.contentSize = NSSize(width: 280, height: 160)
+        popover.contentSize = NSSize(width: 420, height: 80)
         popover.behavior = .transient
         popover.contentViewController = NSHostingController(rootView: ContentView())
         self.popover = popover
 
-        // Poll mouse position to detect hover over menu bar button
         mouseTimer = Timer.scheduledTimer(withTimeInterval: 0.05, repeats: true) { [weak self] _ in
             self?.checkHover()
         }
 
-        // Wait for backend then fetch
         DispatchQueue.global().asyncAfter(deadline: .now() + 3) {
             self.waitForBackendThenFetch()
         }
@@ -52,8 +48,6 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             self?.fetchTodayCount()
         }
     }
-
-    // MARK: - Hover via mouse position polling
 
     var isHovering = false
 
@@ -74,7 +68,6 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         } else if !nowHovering && isHovering {
             isHovering = false
             hoverTimer?.invalidate()
-            // Only close if mouse isn't in the popover
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in
                 guard let self = self, let popover = self.popover, popover.isShown else { return }
                 if let popoverWindow = popover.contentViewController?.view.window {
@@ -103,17 +96,13 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
-    // MARK: - Resize popover
-
     func resizePopover(width: CGFloat, height: CGFloat) {
         DispatchQueue.main.async {
             self.popover?.contentSize = NSSize(width: width, height: height)
         }
     }
 
-    // MARK: - Menu bar badge
-
-    func updateMenuBarTitle(count: Int?) {
+    func updateMenuBarTitle() {
         DispatchQueue.main.async {
             if let button = self.statusItem?.button {
                 let config = NSImage.SymbolConfiguration(pointSize: 20, weight: .medium)
@@ -146,12 +135,10 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         URLSession.shared.dataTask(with: url) { [weak self] data, _, _ in
             guard let data = data,
                   let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-                  let count = json["count"] as? Int else { return }
-            self?.updateMenuBarTitle(count: count)
+                  let _ = json["count"] as? Int else { return }
+            self?.updateMenuBarTitle()
         }.resume()
     }
-
-    // MARK: - Backend
 
     func startBackend() {
         startBackendAt(path: "/Users/drewcraig/Projects/cal-notion-v3/backend")
