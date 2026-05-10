@@ -11,6 +11,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     var mouseTimer: Timer?
 
     static var shared: AppDelegate?
+    var settingsWindow: NSWindow?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         AppDelegate.shared = self
@@ -179,6 +180,25 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         } catch {
             print("[CalNotionBar] Failed to start backend: \(error)")
         }
+    }
+
+    func openSettings() {
+        if settingsWindow == nil {
+            let view = NSHostingView(rootView: SettingsView())
+            let window = NSWindow(
+                contentRect: NSRect(x: 0, y: 0, width: 400, height: 320),
+                styleMask: [.titled, .closable],
+                backing: .buffered,
+                defer: false
+            )
+            window.title = "Cal Notion Bar — Settings"
+            window.contentView = view
+            window.center()
+            window.isReleasedWhenClosed = false
+            settingsWindow = window
+        }
+        settingsWindow?.makeKeyAndOrderFront(nil)
+        NSApp.activate(ignoringOtherApps: true)
     }
 
     func applicationWillTerminate(_ notification: Notification) {

@@ -19,6 +19,7 @@ class AgentViewModel: ObservableObject {
     @Published var nextEvent: CalEvent? = nil
     @Published var notionExisted = false
     @Published var showModify = false
+    let settings = SettingsStore.shared
     @Published var pendingWeeks = 1
     @Published var persistedNotionURL: String? = nil
     @Published var persistedNotionTitle: String? = nil
@@ -92,6 +93,7 @@ class AgentViewModel: ObservableObject {
     func autoLoad() async {
         guard step == .idle else { return }
         step = .fetching
+        weeksAhead = settings.defaultWeeks
         loadPersistedState()
         await fetchEvents()
     }
@@ -246,6 +248,14 @@ struct ContentView: View {
             if vm.step == .fetching || vm.step == .posting {
                 ProgressView().scaleEffect(0.6)
             }
+            Button {
+                AppDelegate.shared?.openSettings()
+            } label: {
+                Image(systemName: "gearshape")
+                    .font(.system(size: 13))
+                    .foregroundColor(.secondary)
+            }
+            .buttonStyle(.plain)
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 10)

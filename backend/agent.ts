@@ -368,6 +368,8 @@ export async function sendNotification({
   end,
   eventCount,
   source = "manual",
+  email,
+  apiKey,
 }: {
   title: string;
   url: string | null;
@@ -375,9 +377,13 @@ export async function sendNotification({
   end: string;
   eventCount: number;
   source?: "manual" | "autorun";
+  email?: string;
+  apiKey?: string;
 }): Promise<void> {
-  const apiKey = process.env.RESEND_API_KEY;
-  if (!apiKey) {
+  const resolvedKey = apiKey || process.env.RESEND_API_KEY;
+  const resolvedEmail = email || process.env.NOTIFICATION_EMAIL || "drewrcraig.9@gmail.com";
+
+  if (!resolvedKey) {
     console.warn("[notify] RESEND_API_KEY not set — skipping email");
     return;
   }
@@ -398,11 +404,11 @@ export async function sendNotification({
     method: "POST",
     headers: {
       "Content-Type": "application/json",
-      Authorization: `Bearer ${apiKey}`,
+      Authorization: `Bearer ${resolvedKey}`,
     },
     body: JSON.stringify({
       from: "onboarding@resend.dev",
-      to: "drewrcraig.9@gmail.com",
+      to: resolvedEmail,
       subject: `Cal-Notion ${label}: ${title}`,
       html,
     }),
