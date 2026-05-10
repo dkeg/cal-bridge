@@ -1,5 +1,7 @@
 # Cal → Notion
 
+Note - screen captures and recording are behind most recent version, but core functioniliy is the same.
+
 A native macOS menu bar app that fetches events from all your Google Calendars and posts a formatted weekly schedule to Notion — automatically every Sunday night, or on demand.
 
 <br>
