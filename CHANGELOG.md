@@ -4,6 +4,26 @@ All notable changes to Cal → Notion are documented here.
 
 ---
 
+## [1.2.0] — 2026-05-09
+
+### Added
+- **Settings window** — gear icon in popover header opens a three-tab settings panel
+- **General tab** — configure default weeks (1–4) and default calendar selection; persisted across relaunches
+- **Configuration tab** — set notification email and Resend API key without touching `.env`
+- **About tab** — app version, year, and "Check for updates" button that pings GitHub releases API
+- **Runtime settings endpoint** — `GET /settings` and `POST /settings` on the backend; settings applied in-memory without restarting
+- **`NOTIFICATION_EMAIL`** environment variable support as a `.env` fallback for notification email
+
+### Changed
+- Notification email and Resend API key moved from hardcoded values to configurable settings
+- `sendNotification()` now accepts `email` and `apiKey` params, falling back to `.env` values if not set via settings
+- Version check uses numeric comparison (`orderedDescending`) instead of string equality
+
+### Fixed
+- "Check for updates" no longer shows false positive when GitHub has an older release tag than local version
+
+---
+
 ## [1.1.0] — 2026-05-09
 
 ### Added
