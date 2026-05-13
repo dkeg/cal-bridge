@@ -24,13 +24,15 @@ struct SettingsView: View {
             Divider()
 
             // Tab content
-            Group {
-                if selectedTab == 0 { generalTab }
-                else if selectedTab == 1 { configurationTab }
-                else { aboutTab }
+            ScrollView {
+                Group {
+                    if selectedTab == 0 { generalTab }
+                    else if selectedTab == 1 { configurationTab }
+                    else { aboutTab }
+                }
+                .frame(maxWidth: .infinity, alignment: .topLeading)
+                .padding(24)
             }
-            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-            .padding(24)
 
             Divider()
 
@@ -54,7 +56,7 @@ struct SettingsView: View {
             .padding(.horizontal, 20)
             .padding(.vertical, 12)
         }
-        .frame(width: 400, height: 320)
+        .frame(width: 440, height: 400)
         .background(Color(NSColor.windowBackgroundColor))
         .onAppear { loadCalendars() }
     }
@@ -63,6 +65,20 @@ struct SettingsView: View {
 
     var generalTab: some View {
         VStack(alignment: .leading, spacing: 20) {
+            // Change detection
+            HStack {
+                Text("Change detection")
+                    .frame(width: 130, alignment: .leading)
+                Toggle("", isOn: $store.changeDetectionEnabled)
+                    .toggleStyle(.switch)
+                    .labelsHidden()
+                Text("Check every 30 min")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+            }
+
+            Divider()
+
             // Default weeks
             HStack {
                 Text("Default weeks")

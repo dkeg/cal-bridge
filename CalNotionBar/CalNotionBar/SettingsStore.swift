@@ -24,11 +24,17 @@ class SettingsStore: ObservableObject {
         didSet { defaults.set(resendAPIKey, forKey: "resendAPIKey") }
     }
 
+    // MARK: - Change Detection
+    @Published var changeDetectionEnabled: Bool {
+        didSet { defaults.set(changeDetectionEnabled, forKey: "changeDetectionEnabled") }
+    }
+
     // MARK: - Init
     private init() {
         defaultWeeks = defaults.integer(forKey: "defaultWeeks").nonZero ?? 1
         disabledCalendarIDs = Set(defaults.stringArray(forKey: "disabledCalendarIDs") ?? [])
         notificationEmail = defaults.string(forKey: "notificationEmail") ?? ""
+        changeDetectionEnabled = defaults.bool(forKey: "changeDetectionEnabled") == false ? true : defaults.bool(forKey: "changeDetectionEnabled")
         resendAPIKey = defaults.string(forKey: "resendAPIKey") ?? ""
     }
 

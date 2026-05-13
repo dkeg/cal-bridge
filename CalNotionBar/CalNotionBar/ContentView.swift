@@ -19,6 +19,7 @@ class AgentViewModel: ObservableObject {
     @Published var nextEvent: CalEvent? = nil
     @Published var notionExisted = false
     @Published var showModify = false
+    @Published var hasUnsyncedChanges = false
     let settings = SettingsStore.shared
     @Published var pendingWeeks = 1
     @Published var persistedNotionURL: String? = nil
@@ -96,11 +97,16 @@ class AgentViewModel: ObservableObject {
         weeksAhead = settings.defaultWeeks
         loadPersistedState()
         await fetchEvents()
+        // If we have a persisted posted state restore done step
+        if effectiveNotionURL != nil && notionURL == nil {
+            step = .done
+        }
     }
 
     func fetchEvents() async {
         errorMsg = nil
         step = .fetching
+        AppDelegate.shared?.resizePopover(width: 420, height: 110)
         do {
             if calendars.isEmpty {
                 calendars = try await APIClient.shared.fetchCalendars()
@@ -115,7 +121,7 @@ class AgentViewModel: ObservableObject {
         } catch {
             errorMsg = error.localizedDescription
             step = .error
-            AppDelegate.shared?.resizePopover(width: 420, height: 80)
+            AppDelegate.shared?.resizePopover(width: 420, height: 200)
         }
     }
 
@@ -123,6 +129,7 @@ class AgentViewModel: ObservableObject {
         weeksAhead = pendingWeeks
         showModify = false
         notionURL = nil
+        AppDelegate.shared?.resizePopover(width: 420, height: 80)
         await fetchEvents()
     }
 
@@ -135,6 +142,7 @@ class AgentViewModel: ObservableObject {
             notionExisted = result.existed ?? false
             savePostedState()
             step = .done
+            AppDelegate.shared?.resizePopover(width: 420, height: 580)
         } catch {
             errorMsg = error.localizedDescription
             step = .error
@@ -185,6 +193,57 @@ class AgentViewModel: ObservableObject {
         }
     }
 
+    func checkForUnsyncedChanges() {
+        guard settings.changeDetectionEnabled else { return }
+        guard let url = URL(string: "http://localhost:8420/poll") else { return }
+        URLSession.shared.dataTask(with: url) { [weak self] data, _, _ in
+            guard let data = data,
+                  let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                  let hasChanges = json["hasChanges"] as? Bool else { return }
+            DispatchQueue.main.async { self?.hasUnsyncedChanges = hasChanges }
+        }.resume()
+    }
+
+    func resync() async {
+        step = .fetching
+        do {
+            guard let url = URL(string: "http://localhost:8420/resync") else { return }
+            var req = URLRequest(url: url)
+            req.httpMethod = "POST"
+            req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+            req.httpBody = try JSONSerialization.data(withJSONObject: ["weeksAhead": weeksAhead])
+            let (data, _) = try await URLSession.shared.data(for: req)
+            let json = try JSONSerialization.jsonObject(with: data) as? [String: Any]
+            if let eventsRaw = json?["events"],
+               let eventsData = try? JSONSerialization.data(withJSONObject: eventsRaw) {
+                let events = try JSONDecoder().decode([CalEvent].self, from: eventsData)
+                days = groupByDay(events)
+            }
+            start = json?["start"] as? String ?? start
+            end = json?["end"] as? String ?? end
+            notionURL = json?["url"] as? String
+            notionTitle = json?["title"] as? String
+            hasUnsyncedChanges = false
+            AppDelegate.shared?.clearUnsyncedChanges()
+            savePostedState()
+            step = .done
+        } catch {
+            errorMsg = error.localizedDescription
+            step = .error
+        }
+    }
+
+    func resetForNewSession() {
+        guard step != .fetching && step != .posting else { return }
+        step = .idle
+        days = []
+        notionURL = nil
+        errorMsg = nil
+        showModify = false
+        weeksAhead = settings.defaultWeeks
+        pendingWeeks = settings.defaultWeeks
+    }
+
     func reset() {
         step = .idle
         calendars = []
@@ -203,7 +262,11 @@ class AgentViewModel: ObservableObject {
 }
 
 struct ContentView: View {
-    @StateObject var vm = AgentViewModel()
+    @ObservedObject var vm: AgentViewModel
+
+    init(vm: AgentViewModel) {
+        self.vm = vm
+    }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -233,12 +296,12 @@ struct ContentView: View {
         .frame(width: 420)
         .onAppear {
             vm.fetchNextEvent()
-            Task { await vm.autoLoad() }
+            vm.checkForUnsyncedChanges()
         }
     }
 
     var header: some View {
-        HStack {
+        HStack(alignment: .center) {
             Image(systemName: "calendar.badge.clock")
                 .foregroundColor(.accentColor)
                 .font(.system(size: 14))
@@ -247,6 +310,7 @@ struct ContentView: View {
             Spacer()
             if vm.step == .fetching || vm.step == .posting {
                 ProgressView().scaleEffect(0.6)
+                    .frame(width: 16, height: 16)
             }
             Button {
                 AppDelegate.shared?.openSettings()
@@ -257,8 +321,8 @@ struct ContentView: View {
             }
             .buttonStyle(.plain)
         }
+        .frame(height: 40)
         .padding(.horizontal, 14)
-        .padding(.vertical, 10)
     }
 
     var calendarChips: some View {
@@ -284,12 +348,12 @@ struct ContentView: View {
             Text("Weeks to sync")
                 .font(.caption)
                 .foregroundColor(.secondary)
-            HStack(spacing: 6) {
+            HStack(spacing: 4) {
                 ForEach([1, 2, 3, 4], id: \.self) { w in
                     Button(action: { vm.pendingWeeks = w }) {
-                        Text("\(w) wk")
+                        Text("\(w)w")
                             .font(.system(size: 12, weight: .medium))
-                            .padding(.horizontal, 12)
+                            .padding(.horizontal, 8)
                             .padding(.vertical, 5)
                             .background(vm.pendingWeeks == w ? Color.accentColor : Color.secondary.opacity(0.15))
                             .foregroundColor(vm.pendingWeeks == w ? .white : .primary)
@@ -318,6 +382,25 @@ struct ContentView: View {
 
     var metaLine: some View {
         VStack(alignment: .leading, spacing: 4) {
+            if vm.hasUnsyncedChanges {
+                HStack(spacing: 5) {
+                    Image(systemName: "arrow.triangle.2.circlepath")
+                        .font(.system(size: 10))
+                        .foregroundColor(.blue)
+                    Text("Calendar changes detected")
+                        .font(.caption2)
+                        .foregroundColor(.blue)
+                    Spacer()
+                    Button("Re-sync") { Task { await vm.resync() } }
+                        .font(.caption2)
+                        .buttonStyle(.borderedProminent)
+                        .controlSize(.mini)
+                }
+                .padding(.horizontal, 8)
+                .padding(.vertical, 5)
+                .background(Color.blue.opacity(0.08))
+                .cornerRadius(6)
+            }
             if vm.isAutorun {
                 HStack(spacing: 5) {
                     Image(systemName: "sparkles")
@@ -391,7 +474,7 @@ struct ContentView: View {
             Spacer()
         }
         .padding(.horizontal, 14)
-        .padding(.vertical, 20)
+        .frame(height: 60)
     }
 
     var errorView: some View {

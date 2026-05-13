@@ -12,6 +12,11 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
     static var shared: AppDelegate?
     var settingsWindow: NSWindow?
+    var sharedVM: AgentViewModel?
+    var pollTimer: Timer?
+    var hasUnsyncedChanges = false {
+        didSet { updateMenuBarIcon() }
+    }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         AppDelegate.shared = self
@@ -32,10 +37,12 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             button.sendAction(on: [.leftMouseUp, .rightMouseUp])
         }
 
+        let vm = AgentViewModel()
+        sharedVM = vm
         let popover = NSPopover()
         popover.contentSize = NSSize(width: 420, height: 80)
         popover.behavior = .transient
-        popover.contentViewController = NSHostingController(rootView: ContentView())
+        popover.contentViewController = NSHostingController(rootView: ContentView(vm: vm))
         self.popover = popover
 
         mouseTimer = Timer.scheduledTimer(withTimeInterval: 0.05, repeats: true) { [weak self] _ in
@@ -47,6 +54,9 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         }
         todayTimer = Timer.scheduledTimer(withTimeInterval: 300, repeats: true) { [weak self] _ in
             self?.fetchTodayCount()
+        }
+        pollTimer = Timer.scheduledTimer(withTimeInterval: 1800, repeats: true) { [weak self] _ in
+            self?.pollForChanges()
         }
     }
 
@@ -83,8 +93,13 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     func showPopover() {
         guard let button = statusItem?.button, let popover = popover else { return }
         if !popover.isShown {
+            popover.contentSize = NSSize(width: 420, height: 80)
             popover.show(relativeTo: button.bounds, of: button, preferredEdge: .minY)
             NSApp.activate(ignoringOtherApps: true)
+            Task { @MainActor in
+                self.sharedVM?.resetForNewSession()
+                await self.sharedVM?.autoLoad()
+            }
         }
     }
 
@@ -123,6 +138,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
                let ok = json["ok"] as? Bool, ok {
                 self?.fetchTodayCount()
+                self?.pollForChanges()
             } else {
                 DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
                     self?.waitForBackendThenFetch()
@@ -182,11 +198,61 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
+    func pollForChanges() {
+        guard SettingsStore.shared.changeDetectionEnabled else { return }
+        guard let url = URL(string: "http://localhost:8420/poll") else { return }
+        URLSession.shared.dataTask(with: url) { [weak self] data, _, _ in
+            guard let data = data,
+                  let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                  let hasChanges = json["hasChanges"] as? Bool else { return }
+            DispatchQueue.main.async {
+                self?.hasUnsyncedChanges = hasChanges
+            }
+        }.resume()
+    }
+
+    func updateMenuBarIcon() {
+        DispatchQueue.main.async {
+            guard let button = self.statusItem?.button else { return }
+            let config = NSImage.SymbolConfiguration(pointSize: 16, weight: .medium)
+            guard let base = NSImage(systemSymbolName: "calendar", accessibilityDescription: "Calendar")?
+                .withSymbolConfiguration(config) else { return }
+
+            if self.hasUnsyncedChanges {
+                // Draw calendar icon with blue dot overlay
+                let size = NSSize(width: 22, height: 22)
+                let composite = NSImage(size: size)
+                composite.lockFocus()
+                base.draw(in: NSRect(x: 1, y: 1, width: 18, height: 18))
+                NSColor.systemBlue.setFill()
+                let dot = NSBezierPath(ovalIn: NSRect(x: 14, y: 14, width: 7, height: 7))
+                dot.fill()
+                // White ring around dot
+                NSColor.white.setStroke()
+                let ring = NSBezierPath(ovalIn: NSRect(x: 13, y: 13, width: 9, height: 9))
+                ring.lineWidth = 1.5
+                ring.stroke()
+                composite.unlockFocus()
+                composite.isTemplate = false
+                button.image = composite
+            } else {
+                base.isTemplate = true
+                button.image = base
+            }
+            button.imagePosition = .imageOnly
+            button.title = ""
+        }
+    }
+
+    func clearUnsyncedChanges() {
+        hasUnsyncedChanges = false
+    }
+
     func openSettings() {
         if settingsWindow == nil {
             let view = NSHostingView(rootView: SettingsView())
             let window = NSWindow(
-                contentRect: NSRect(x: 0, y: 0, width: 400, height: 320),
+                contentRect: NSRect(x: 0, y: 0, width: 440, height: 400),
                 styleMask: [.titled, .closable],
                 backing: .buffered,
                 defer: false
@@ -206,5 +272,6 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         todayTimer?.invalidate()
         hoverTimer?.invalidate()
         mouseTimer?.invalidate()
+        pollTimer?.invalidate()
     }
 }

@@ -421,3 +421,168 @@ export async function sendNotification({
     console.log(`[notify] Email sent — ${title}`);
   }
 }
+
+// ── Sync Token Storage ────────────────────────────────────────────────────
+
+import * as fs from "fs";
+import * as path from "path";
+import * as os from "os";
+
+const syncTokenPath = path.join(os.homedir(), "Library", "Application Support", "CalNotionBar", "sync-token.json");
+
+export function storeSyncToken(calendarId: string, token: string): void {
+  console.log(`[sync] Storing token for ${calendarId} at ${syncTokenPath}`);
+  const dir = path.dirname(syncTokenPath);
+  if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+  let tokens: Record<string, string> = {};
+  if (fs.existsSync(syncTokenPath)) {
+    try { tokens = JSON.parse(fs.readFileSync(syncTokenPath, "utf8")); } catch {}
+  }
+  tokens[calendarId] = token;
+  fs.writeFileSync(syncTokenPath, JSON.stringify(tokens, null, 2));
+}
+
+export function loadSyncTokens(): Record<string, string> {
+  if (!fs.existsSync(syncTokenPath)) return {};
+  try { return JSON.parse(fs.readFileSync(syncTokenPath, "utf8")); } catch { return {}; }
+}
+
+export function clearSyncTokens(): void {
+  if (fs.existsSync(syncTokenPath)) fs.unlinkSync(syncTokenPath);
+}
+
+// ── Poll For Changes ──────────────────────────────────────────────────────
+
+export async function pollForChanges(calendars: Calendar[]): Promise<{
+  hasChanges: boolean;
+  changedEvents: CalEvent[];
+}> {
+  const cal = getCalendarClient();
+  const tokens = loadSyncTokens();
+  const changedEvents: CalEvent[] = [];
+  let hasChanges = false;
+
+  for (const calendar of calendars) {
+    const syncToken = tokens[calendar.id];
+    if (!syncToken) continue; // no token yet — skip until first full sync
+
+    try {
+      const params: any = {
+        calendarId: calendar.id,
+        singleEvents: true,
+        syncToken,
+      };
+
+      const res = await cal.events.list(params);
+      const items = res.data.items ?? [];
+
+      if (items.length > 0) {
+        hasChanges = true;
+        for (const item of items) {
+          if (item.status === "cancelled") continue;
+          changedEvents.push(mapEvent(item, calendar.label));
+        }
+      }
+
+      // Store updated sync token
+      if (res.data.nextSyncToken) {
+        storeSyncToken(calendar.id, res.data.nextSyncToken);
+      }
+    } catch (err: any) {
+      // 410 Gone means sync token expired — clear and do full sync next time
+      if (err?.code === 410) {
+        console.warn(`[poll] Sync token expired for ${calendar.label} — clearing`);
+        const tokens = loadSyncTokens();
+        delete tokens[calendar.id];
+        fs.writeFileSync(syncTokenPath, JSON.stringify(tokens, null, 2));
+      } else {
+        console.error(`[poll] Error polling ${calendar.label}:`, err.message);
+      }
+    }
+  }
+
+  return { hasChanges, changedEvents };
+}
+
+// ── Store sync tokens during full fetch ───────────────────────────────────
+
+export async function fetchEventsWithSync(
+  calendars: Calendar[],
+  start: string,
+  end: string
+): Promise<{ events: CalEvent[]; syncTokens: Record<string, string> }> {
+  const cal = getCalendarClient();
+  const syncTokens: Record<string, string> = {};
+
+  // Run all calendar fetches in parallel
+  const results = await Promise.allSettled(calendars.map(async (calendar) => {
+    // Main fetch with time range
+    const res = await cal.events.list({
+      calendarId: calendar.id,
+      timeMin: new Date(start + "T00:00:00Z").toISOString(),
+      timeMax: new Date(end + "T23:59:59Z").toISOString(),
+      singleEvents: true,
+      orderBy: "startTime",
+      maxResults: 250,
+    });
+
+    const events: CalEvent[] = [];
+    for (const item of res.data.items ?? []) {
+      if (item.status === "cancelled") continue;
+      events.push(mapEvent(item, calendar.label));
+    }
+
+    // Get sync token in parallel with main fetch result
+    try {
+      let pageToken: string | undefined = undefined;
+      let finalSyncToken: string | undefined = undefined;
+      do {
+        const syncRes: any = await cal.events.list({
+          calendarId: calendar.id,
+          maxResults: 250,
+          showDeleted: true,
+          singleEvents: true,
+          orderBy: "updated",
+          ...(pageToken ? { pageToken } : {}),
+        });
+        pageToken = syncRes.data.nextPageToken ?? undefined;
+        if (syncRes.data.nextSyncToken) finalSyncToken = syncRes.data.nextSyncToken;
+      } while (pageToken);
+
+      if (finalSyncToken) {
+        syncTokens[calendar.id] = finalSyncToken;
+        console.log(`[sync] stored token for ${calendar.label}`);
+      }
+    } catch (syncErr: any) {
+      console.warn(`[sync] Could not get sync token for ${calendar.label}:`, syncErr.message);
+    }
+
+    return events;
+  }));
+
+  const all: CalEvent[] = [];
+  for (const result of results) {
+    if (result.status === "fulfilled") all.push(...result.value);
+    else console.error("[fetch] calendar error:", result.reason?.message);
+  }
+
+  return { events: all.sort((a, b) => {
+    if (a.date !== b.date) return a.date.localeCompare(b.date);
+    return (a.start ?? "").localeCompare(b.start ?? "");
+  }), syncTokens };
+}
+
+function mapEvent(item: any, calendarLabel: string): CalEvent {
+  const start = item.start?.dateTime ?? item.start?.date ?? "";
+  const end = item.end?.dateTime ?? item.end?.date ?? "";
+  const allDay = !item.start?.dateTime;
+  const date = allDay ? start : start.split("T")[0];
+  return {
+    date,
+    start: allDay ? undefined : start,
+    end: allDay ? undefined : end,
+    title: item.summary ?? "(No title)",
+    calendar: calendarLabel,
+    allDay,
+  };
+}

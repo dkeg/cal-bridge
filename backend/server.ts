@@ -4,12 +4,16 @@ import cors from "cors";
 import {
   listCalendars,
   fetchEvents,
+  fetchEventsWithSync,
   createNotionPage,
   checkExistingPage,
   groupByDay,
   dateRange,
   todayString,
   sendNotification,
+  pollForChanges,
+  storeSyncToken,
+  clearSyncTokens,
   Calendar,
   DayGroup,
 } from "./agent";
@@ -95,7 +99,12 @@ app.post("/events", async (req, res) => {
       weeksAhead = 1,
     }: { calendars: Calendar[]; weeksAhead: number } = req.body;
     const { start, end } = dateRange(weeksAhead);
-    const events = await fetchEvents(calendars, start, end);
+    const { events, syncTokens } = await fetchEventsWithSync(calendars, start, end);
+    // Store sync tokens for change detection
+    for (const [calId, token] of Object.entries(syncTokens)) {
+      storeSyncToken(calId, token);
+    }
+    console.log(`[/events] fetched ${events.length} events, stored ${Object.keys(syncTokens).length} sync tokens`);
     res.json({ events, start, end });
   } catch (e: any) {
     console.error("[/events]", e.message);
@@ -145,6 +154,57 @@ app.post("/notion", async (req, res) => {
     res.json({ ...result, existed: false });
   } catch (e: any) {
     console.error("[/notion]", e.message);
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// ── GET /poll ─────────────────────────────────────────────────────────────
+
+app.get("/poll", async (_req, res) => {
+  try {
+    const calendars = await listCalendars();
+    const { hasChanges, changedEvents } = await pollForChanges(calendars);
+    res.json({ hasChanges, changeCount: changedEvents.length, changedEvents });
+  } catch (e: any) {
+    console.error("[/poll]", e.message);
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// ── POST /resync ──────────────────────────────────────────────────────────
+
+app.post("/resync", async (req, res) => {
+  try {
+    const { weeksAhead = 1 }: { weeksAhead: number } = req.body;
+    const calendars = await listCalendars();
+    const { start, end } = dateRange(weeksAhead);
+
+    // Full fetch and store new sync tokens
+    const { events, syncTokens } = await fetchEventsWithSync(calendars, start, end);
+    for (const [calId, token] of Object.entries(syncTokens)) {
+      storeSyncToken(calId, token);
+    }
+
+    const days = groupByDay(events);
+
+    // Delete existing page and create fresh
+    clearSyncTokens();
+    const result = await createNotionPage(days, start, end);
+
+    sendNotification({
+      title: result.title,
+      url: result.url,
+      start,
+      end,
+      eventCount: events.length,
+      source: "manual",
+      email: runtimeSettings.notificationEmail,
+      apiKey: runtimeSettings.resendAPIKey,
+    }).catch(e => console.error("[notify]", e.message));
+
+    res.json({ ...result, events, start, end });
+  } catch (e: any) {
+    console.error("[/resync]", e.message);
     res.status(500).json({ error: e.message });
   }
 });
