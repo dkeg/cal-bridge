@@ -393,7 +393,7 @@ export async function sendNotification({
 
   const html = `
     <div style="font-family: sans-serif; max-width: 480px;">
-      <h3 style="margin-bottom: 4px;">📅 Cal-Notion — ${label}</h3>
+      <h3 style="margin-bottom: 4px;">📅 CalBridge — ${label}</h3>
       <p style="color: #555; margin-top: 0;">${start} → ${end} · ${eventCount} events</p>
       <p>${notionLink}</p>
       ${source === "autorun" ? `<p style="color: #888; font-size: 12px;">Sent automatically by your Sunday night autorun.</p>` : ""}
@@ -407,9 +407,9 @@ export async function sendNotification({
       Authorization: `Bearer ${resolvedKey}`,
     },
     body: JSON.stringify({
-      from: "onboarding@resend.dev",
+      from: process.env.RESEND_FROM ?? "onboarding@resend.dev",
       to: resolvedEmail,
-      subject: `Cal-Notion ${label}: ${title}`,
+      subject: `CalBridge ${label}: ${title}`,
       html,
     }),
   });
@@ -428,7 +428,7 @@ import * as fs from "fs";
 import * as path from "path";
 import * as os from "os";
 
-const syncTokenPath = path.join(os.homedir(), "Library", "Application Support", "CalNotionBar", "sync-token.json");
+const syncTokenPath = path.join(os.homedir(), "Library", "Application Support", "CalBridge", "sync-token.json");
 
 export function storeSyncToken(calendarId: string, token: string): void {
   console.log(`[sync] Storing token for ${calendarId} at ${syncTokenPath}`);
@@ -514,9 +514,7 @@ export async function fetchEventsWithSync(
   const cal = getCalendarClient();
   const syncTokens: Record<string, string> = {};
 
-  // Run all calendar fetches in parallel
   const results = await Promise.allSettled(calendars.map(async (calendar) => {
-    // Main fetch with time range
     const res = await cal.events.list({
       calendarId: calendar.id,
       timeMin: new Date(start + "T00:00:00Z").toISOString(),
@@ -532,29 +530,11 @@ export async function fetchEventsWithSync(
       events.push(mapEvent(item, calendar.label));
     }
 
-    // Get sync token in parallel with main fetch result
-    try {
-      let pageToken: string | undefined = undefined;
-      let finalSyncToken: string | undefined = undefined;
-      do {
-        const syncRes: any = await cal.events.list({
-          calendarId: calendar.id,
-          maxResults: 250,
-          showDeleted: true,
-          singleEvents: true,
-          orderBy: "updated",
-          ...(pageToken ? { pageToken } : {}),
-        });
-        pageToken = syncRes.data.nextPageToken ?? undefined;
-        if (syncRes.data.nextSyncToken) finalSyncToken = syncRes.data.nextSyncToken;
-      } while (pageToken);
-
-      if (finalSyncToken) {
-        syncTokens[calendar.id] = finalSyncToken;
-        console.log(`[sync] stored token for ${calendar.label}`);
-      }
-    } catch (syncErr: any) {
-      console.warn(`[sync] Could not get sync token for ${calendar.label}:`, syncErr.message);
+    // Use the sync token from the main fetch — scoped to this time range,
+    // which is all we need for detecting changes to upcoming events.
+    if (res.data.nextSyncToken) {
+      syncTokens[calendar.id] = res.data.nextSyncToken;
+      console.log(`[sync] stored token for ${calendar.label}`);
     }
 
     return events;

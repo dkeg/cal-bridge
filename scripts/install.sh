@@ -9,12 +9,12 @@ NC='\033[0m'
 
 echo ""
 echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
-echo -e "${CYAN}   Cal → Notion  •  Setup${NC}"
+echo -e "${CYAN}   CalBridge  •  Setup${NC}"
 echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
 echo ""
 
 BACKEND_DIR="$(cd "$(dirname "$0")/../backend" && pwd)"
-PLIST_NAME="com.cal-notion.autorun"
+PLIST_NAME="com.drewcraig.cal-bridge-autorun"
 PLIST_PATH="$HOME/Library/LaunchAgents/$PLIST_NAME.plist"
 
 # ── Check dependencies ────────────────────────────────────────────────────
@@ -50,7 +50,7 @@ echo -e "${CYAN}  Google Calendar Setup${NC}"
 echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
 echo ""
 echo "You need a Google Cloud project with the Calendar API enabled."
-echo "Guide: https://github.com/dkeg/cal-notion#google-setup"
+echo "Guide: https://github.com/dkeg/cal-bridge#google-setup"
 echo ""
 read -p "Google Client ID: " GOOGLE_CLIENT_ID
 read -p "Google Client Secret: " GOOGLE_CLIENT_SECRET
@@ -171,9 +171,9 @@ if [[ "$AUTORUN" == "y" || "$AUTORUN" == "Y" ]]; then
         <integer>0</integer>
     </dict>
     <key>StandardOutPath</key>
-    <string>$HOME/Library/Logs/cal-notion-autorun.log</string>
+    <string>$HOME/Library/Logs/cal-bridge-autorun.log</string>
     <key>StandardErrorPath</key>
-    <string>$HOME/Library/Logs/cal-notion-autorun-error.log</string>
+    <string>$HOME/Library/Logs/cal-bridge-autorun-error.log</string>
     <key>RunAtLoad</key>
     <false/>
 </dict>
@@ -182,7 +182,7 @@ EOF
 
   launchctl load "$PLIST_PATH"
   echo -e "${GREEN}✓ Auto-run scheduled every Monday at 7am${NC}"
-  echo "  Logs: ~/Library/Logs/cal-notion-autorun.log"
+  echo "  Logs: ~/Library/Logs/cal-bridge-autorun.log"
 fi
 
 # ── Done ──────────────────────────────────────────────────────────────────
@@ -193,7 +193,7 @@ echo -e "${GREEN}  ✓ Setup complete!${NC}"
 echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
 echo ""
 echo "Next steps:"
-echo "  1. Copy CalNotionBar.app to /Applications"
+echo "  1. Copy CalBridge.app to /Applications"
 echo "  2. Launch it — the backend starts automatically"
 echo "  3. Hover over the calendar icon in your menu bar"
 echo ""

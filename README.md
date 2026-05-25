@@ -1,8 +1,6 @@
-# Cal → Notion
+# CalBridge
 
-Note - screen captures and recording are behind most recent version, but core functioniliy is the same.
-
-A native macOS menu bar app that fetches events from all your Google Calendars and posts a formatted weekly schedule to Notion — automatically every Sunday night, or on demand.
+A native macOS menu bar app that fetches events from all your Google Calendars and posts a formatted weekly schedule to Notion and/or Obsidian — automatically every Sunday night, or on demand.
 
 <br>
 
@@ -33,15 +31,15 @@ A native macOS menu bar app that fetches events from all your Google Calendars a
 
 ## Features
 
-- 🗓️ Hover over the menu bar icon — events load automatically, no button needed
+- 🗓️ Hover over the menu bar icon — events load instantly from cache
 - 📅 Fetches 1 week by default; modify to 1–4 weeks inline
 - ✏️ Preview and edit events before posting
 - 📝 Posts a beautifully formatted day-by-day table to Notion
+- 📓 Obsidian support — sync to your Obsidian vault via Local REST API plugin
+- 🔀 Sync target selector — choose Notion, Obsidian, or Both in Settings
 - 🔁 Auto-runs every Sunday at 9 PM via launchd
 - ✉️ Email notification on every post (manual and autorun)
 - 💾 Persists posted state across relaunches — shows "Open in Notion" or "Open in Obsidian" when already posted
-- 📓 Obsidian support — sync to your Obsidian vault via Local REST API plugin
-- 🔀 Sync target selector — choose Notion, Obsidian, or Both in Settings
 - ✨ Autorun banner shows when the Sunday sync has fired
 - ⚠️ Warns if a page for that date range already exists
 
@@ -52,8 +50,8 @@ A native macOS menu bar app that fetches events from all your Google Calendars a
 ### Option A — Homebrew (recommended)
 
 ```bash
-brew tap dkeg/cal-notion
-brew install --cask cal-notion
+brew tap dkeg/cal-bridge
+brew install --cask cal-bridge
 ```
 
 Then run the setup script:
@@ -64,13 +62,13 @@ Then run the setup script:
 
 ### Option B — Direct download
 
-1. Download the latest `CalNotion.dmg` from [Releases](https://github.com/dkeg/cal-notion/releases)
-2. Open the DMG, drag `CalNotionBar.app` to `/Applications`
+1. Download the latest `CalBridge.dmg` from [Releases](https://github.com/dkeg/cal-bridge/releases)
+2. Open the DMG, drag `CalBridge.app` to `/Applications`
 3. Clone this repo and run the setup script:
 
 ```bash
-git clone https://github.com/dkeg/cal-notion.git
-cd cal-notion
+git clone https://github.com/dkeg/cal-bridge.git
+cd cal-bridge
 chmod +x scripts/install.sh
 ./scripts/install.sh
 ```
@@ -84,14 +82,14 @@ chmod +x scripts/install.sh
 - macOS 13+
 - Node.js 18+ (`brew install node`)
 - A Google account
-- A Notion account
+- A Notion account and/or Obsidian with the Local REST API plugin
 - A [Resend](https://resend.com) account (free tier, for email notifications)
 
 ### First-time setup
 
-Cal Notion Bar includes a built-in setup flow — no terminal or config file editing required.
+CalBridge includes a built-in setup flow — no terminal or config file editing required.
 
-1. Launch `CalNotionBar.app` from `/Applications`
+1. Launch `CalBridge.app` from `/Applications`
 2. The setup window appears automatically on first launch
 3. Click **Connect with Google** — your browser opens for OAuth authorization
 4. Authorize access to Google Calendar
@@ -108,6 +106,13 @@ Your credentials are stored securely in macOS Keychain — no `.env` editing nee
 3. Open the Notion page you want to post under
 4. Click `···` → Connections → connect your integration
 
+### Obsidian setup
+
+1. Install the [Local REST API plugin](https://github.com/coddingtonbear/obsidian-local-rest-api) in Obsidian
+2. Copy the API key from the plugin settings
+3. Enter it in **Settings → Configuration → Obsidian API Key**
+4. Set your vault path and target folder
+
 ### Resend (email notifications)
 
 1. Sign up at [resend.com](https://resend.com)
@@ -118,8 +123,8 @@ Your credentials are stored securely in macOS Keychain — no `.env` editing nee
 
 ## Usage
 
-1. Launch `CalNotionBar.app` from `/Applications`
-2. Hover over the calendar icon — events load automatically
+1. Launch `CalBridge.app` from `/Applications`
+2. Hover over the calendar icon — events load instantly
 3. Optionally click **Modify** to change the number of weeks (1–4)
 4. Toggle calendars on/off, edit or remove individual events
 5. Click **Post to Notion →**, **Post to Obsidian →**, or **Post to Both →** depending on your sync target
@@ -131,20 +136,20 @@ Your credentials are stored securely in macOS Keychain — no `.env` editing nee
 ## Autorun
 
 The app runs automatically every Sunday at 9 PM via a launchd agent. After firing it:
-- Writes a flag file to `~/Library/Application Support/CalNotionBar/last-run.json`
+- Writes a flag file to `~/Library/Application Support/CalBridge/last-run.json`
 - Sends an email notification to your configured address
 - Shows an "Auto-synced" banner the next time you open the popover
 
 To set up or recreate the launchd agent:
 
 ```bash
-launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.drewcraig.cal-notion-autorun.plist
+launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.drewcraig.cal-bridge-autorun.plist
 ```
 
 To test manually:
 
 ```bash
-node ~/Projects/cal-notion-v3/backend/dist/autorun.js
+node ~/Projects/cal-bridge/backend/dist/autorun.js
 ```
 
 ---
@@ -153,8 +158,8 @@ node ~/Projects/cal-notion-v3/backend/dist/autorun.js
 
 ```bash
 # Clone
-git clone https://github.com/dkeg/cal-notion.git
-cd cal-notion
+git clone https://github.com/dkeg/cal-bridge.git
+cd cal-bridge
 
 # Backend
 cd backend
@@ -165,7 +170,7 @@ npx ts-node auth.ts   # get Google refresh token
 npm start             # runs on localhost:8420
 
 # Compile autorun
-npx tsc autorun.ts --outDir dist --esModuleInterop --resolveJsonModule --module commonjs --target es2020
+npx tsc agent.ts autorun.ts --outDir dist --esModuleInterop --resolveJsonModule --module commonjs --target es2020
 
 # Swift app
 open CalNotionBar/CalNotionBar.xcodeproj
@@ -175,8 +180,8 @@ open CalNotionBar/CalNotionBar.xcodeproj
 ### Releasing a new version
 
 ```bash
-git tag v1.1.0
-git push origin v1.1.0
+git tag v1.2.0
+git push origin v1.2.0
 ```
 
 GitHub Actions will automatically build the `.dmg` and create a release.
@@ -186,19 +191,21 @@ GitHub Actions will automatically build the `.dmg` and create a release.
 ## Architecture
 
 ```
-CalNotionBar.app (Swift/SwiftUI)
+CalBridge.app (Swift/SwiftUI)
   └── spawns → backend (Express + TypeScript) on localhost:8420
                  ├── /calendars  → Google Calendar API
                  ├── /events     → Google Calendar API
                  ├── /today      → Google Calendar API (badge count)
-                 └── /notion     → Notion API + Resend email
+                 ├── /notion     → Notion API + Resend email
+                 └── /obsidian   → Obsidian Local REST API
 
 launchd agent (Sunday 9 PM)
   └── dist/autorun.js
+        ├── reads sync target from app plist
         ├── fetches 1 week of events
-        ├── posts to Notion
+        ├── posts to Notion and/or Obsidian
         ├── sends email via Resend
-        └── writes ~/Library/Application Support/CalNotionBar/last-run.json
+        └── writes ~/Library/Application Support/CalBridge/last-run.json
 ```
 
 ---
@@ -213,6 +220,7 @@ launchd agent (Sunday 9 PM)
 | `NOTION_API_KEY` | Notion integration token |
 | `NOTION_PARENT_PAGE_ID` | ID of the parent Notion page |
 | `RESEND_API_KEY` | Resend API key for email notifications |
+| `RESEND_FROM` | Sender address once your domain is verified (default: `onboarding@resend.dev`) |
 | `PORT` | Backend port (default: 8420) |
 
 ---

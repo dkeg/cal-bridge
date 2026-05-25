@@ -32,11 +32,13 @@ class AgentViewModel: ObservableObject {
     @Published var persistedEnd: String? = nil
     @Published var autorunFiredAt: Date? = nil
     @Published var isAutorun: Bool = false
+    @Published var cacheFetchedAt: Date? = nil
+    @Published var isBackgroundRefreshing: Bool = false
 
     private let defaults = UserDefaults.standard
     private let supportDir: URL = {
         let dir = FileManager.default.homeDirectoryForCurrentUser
-            .appendingPathComponent("Library/Application Support/CalNotionBar")
+            .appendingPathComponent("Library/Application Support/CalBridge")
         try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
         return dir
     }()
@@ -84,6 +86,57 @@ class AgentViewModel: ObservableObject {
         autorunFiredAt = nil
     }
 
+    var cacheAgeLabel: String? {
+        guard let fetchedAt = cacheFetchedAt else { return nil }
+        let seconds = Int(-fetchedAt.timeIntervalSinceNow)
+        if seconds < 60 { return "just now" }
+        if seconds < 3600 { return "\(seconds / 60)m ago" }
+        return "\(seconds / 3600)h ago"
+    }
+
+    private func saveCache(events: [CalEvent], start: String, end: String, weeks: Int) {
+        guard let data = try? JSONEncoder().encode(events) else { return }
+        defaults.set(data, forKey: "eventsCache")
+        defaults.set(start, forKey: "eventsCacheStart")
+        defaults.set(end, forKey: "eventsCacheEnd")
+        defaults.set(Date().timeIntervalSince1970, forKey: "eventsCacheFetchedAt")
+        defaults.set(weeks, forKey: "eventsCacheWeeks")
+    }
+
+    private func loadFromCache() -> Bool {
+        guard let data = defaults.data(forKey: "eventsCache"),
+              let cachedStart = defaults.string(forKey: "eventsCacheStart"),
+              let cachedEnd = defaults.string(forKey: "eventsCacheEnd"),
+              defaults.integer(forKey: "eventsCacheWeeks") == weeksAhead,
+              let events = try? JSONDecoder().decode([CalEvent].self, from: data) else { return false }
+        days = groupByDay(events)
+        start = cachedStart
+        end = cachedEnd
+        cacheFetchedAt = Date(timeIntervalSince1970: defaults.double(forKey: "eventsCacheFetchedAt"))
+        return true
+    }
+
+    func backgroundRefresh() async {
+        isBackgroundRefreshing = true
+        defer { isBackgroundRefreshing = false }
+        do {
+            if calendars.isEmpty {
+                calendars = try await APIClient.shared.fetchCalendars()
+            }
+            let result = try await APIClient.shared.fetchEvents(calendars: calendars, weeksAhead: weeksAhead)
+            // Don't stomp on in-progress edits
+            if editingEventID == nil {
+                days = groupByDay(result.events)
+                start = result.start
+                end = result.end
+            }
+            cacheFetchedAt = Date()
+            saveCache(events: result.events, start: result.start, end: result.end, weeks: weeksAhead)
+        } catch {
+            print("[cache] Background refresh failed: \(error.localizedDescription)")
+        }
+    }
+
     func savePostedState() {
         defaults.set(notionURL, forKey: "lastNotionURL")
         defaults.set(notionTitle, forKey: "lastNotionTitle")
@@ -97,13 +150,22 @@ class AgentViewModel: ObservableObject {
 
     func autoLoad() async {
         guard step == .idle else { return }
-        step = .fetching
         weeksAhead = settings.defaultWeeks
         loadPersistedState()
-        await fetchEvents()
-        // If we have a persisted posted state restore done step
-        if effectiveNotionURL != nil && notionURL == nil {
-            step = .done
+
+        if loadFromCache() {
+            // Cache is kept warm by the background timer — just show it instantly
+            step = .preview
+            AppDelegate.shared?.resizePopover(width: 420, height: 580)
+            if effectiveNotionURL != nil && notionURL == nil {
+                step = .done
+            }
+        } else {
+            step = .fetching
+            await fetchEvents()
+            if effectiveNotionURL != nil && notionURL == nil {
+                step = .done
+            }
         }
     }
 
@@ -120,6 +182,8 @@ class AgentViewModel: ObservableObject {
             start = result.start
             end = result.end
             notionURL = nil
+            cacheFetchedAt = Date()
+            saveCache(events: result.events, start: result.start, end: result.end, weeks: weeksAhead)
             step = .preview
             AppDelegate.shared?.resizePopover(width: 420, height: 580)
         } catch {
@@ -323,7 +387,7 @@ struct ContentView: View {
             Image(systemName: "calendar.badge.clock")
                 .foregroundColor(.accentColor)
                 .font(.system(size: 14))
-            Text("Calendar → Notion")
+            Text("CalBridge")
                 .font(.system(size: 13, weight: .medium))
             Spacer()
             if vm.step == .fetching || vm.step == .posting {
@@ -446,6 +510,16 @@ struct ContentView: View {
                     Text("· ✓ posted")
                         .font(.caption)
                         .foregroundColor(.green.opacity(0.8))
+                }
+            }
+            if let label = vm.cacheAgeLabel {
+                HStack(spacing: 4) {
+                    if vm.isBackgroundRefreshing {
+                        ProgressView().scaleEffect(0.4).frame(width: 10, height: 10)
+                    }
+                    Text(vm.isBackgroundRefreshing ? "Refreshing…" : "Updated \(label)")
+                        .font(.caption2)
+                        .foregroundColor(.secondary.opacity(0.6))
                 }
             }
             if vm.step == .done, let title = vm.notionTitle {

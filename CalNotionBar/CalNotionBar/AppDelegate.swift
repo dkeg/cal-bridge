@@ -16,12 +16,14 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     var sharedVM: AgentViewModel?
     var pendingOAuthCompletion: ((String) -> Void)?
     var pollTimer: Timer?
+    var cacheRefreshTimer: Timer?
     var hasUnsyncedChanges = false {
         didSet { updateMenuBarIcon() }
     }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         AppDelegate.shared = self
+        migrateFromCalNotionIfNeeded()
         NSApp.setActivationPolicy(.accessory)
 
         // Check if setup is needed
@@ -161,6 +163,17 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                 self?.fetchTodayCount()
                 self?.pollForChanges()
                 self?.syncSettingsToBackend()
+                // Populate the cache immediately, then keep it warm every 10 minutes
+                Task { @MainActor [weak self] in
+                    await self?.sharedVM?.backgroundRefresh()
+                }
+                DispatchQueue.main.async {
+                    self?.cacheRefreshTimer = Timer.scheduledTimer(withTimeInterval: 600, repeats: true) { [weak self] _ in
+                        Task { @MainActor [weak self] in
+                            await self?.sharedVM?.backgroundRefresh()
+                        }
+                    }
+                }
             } else {
                 DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
                     self?.waitForBackendThenFetch()
@@ -180,12 +193,12 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func startBackend() {
-        startBackendAt(path: "/Users/drewcraig/Projects/cal-notion-v3/backend")
+        startBackendAt(path: "/Users/drewcraig/Projects/cal-bridge/backend")
     }
 
     func startBackendAt(path: String) {
         // Only kill existing backend if we started it (check via lockfile)
-        let lockFile = "/tmp/calnotion-backend.pid"
+        let lockFile = "/tmp/calbridge-backend.pid"
         if let pidStr = try? String(contentsOfFile: lockFile),
            let pid = Int(pidStr.trimmingCharacters(in: .whitespacesAndNewlines)) {
             kill(Int32(pid), SIGTERM)
@@ -216,10 +229,10 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         do {
             try process.run()
             backendProcess = process
-            print("[CalNotionBar] Backend started at pid \(process.processIdentifier)")
-            try? "\(process.processIdentifier)".write(toFile: "/tmp/calnotion-backend.pid", atomically: true, encoding: .utf8)
+            print("[CalBridge] Backend started at pid \(process.processIdentifier)")
+            try? "\(process.processIdentifier)".write(toFile: "/tmp/calbridge-backend.pid", atomically: true, encoding: .utf8)
         } catch {
-            print("[CalNotionBar] Failed to start backend: \(error)")
+            print("[CalBridge] Failed to start backend: \(error)")
         }
     }
 
@@ -282,7 +295,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                 backing: .buffered,
                 defer: false
             )
-            window.title = "Cal Notion Bar — Settings"
+            window.title = "CalBridge — Settings"
             window.contentView = view
             window.center()
             window.isReleasedWhenClosed = false
@@ -319,7 +332,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                 backing: .buffered,
                 defer: false
             )
-            window.title = "Set Up Cal Notion Bar"
+            window.title = "Set Up CalBridge"
             window.contentView = NSHostingView(rootView: view)
             window.center()
             window.isReleasedWhenClosed = false
@@ -331,7 +344,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
     func syncSettingsToBackend() {
         // Read directly from plist — UserDefaults.standard uses wrong domain
-        let plistPath = NSHomeDirectory() + "/Library/Preferences/FarmFresh.CalNotionBar.plist"
+        let plistPath = NSHomeDirectory() + "/Library/Preferences/FarmFresh.CalBridge.plist"
         guard let dict = NSDictionary(contentsOfFile: plistPath) as? [String: Any] else {
             print("[settings] plist not found at \(plistPath)")
             return
@@ -374,12 +387,35 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         URLSession.shared.dataTask(with: req).resume()
     }
 
+    func migrateFromCalNotionIfNeeded() {
+        let defaults = UserDefaults.standard
+        guard !defaults.bool(forKey: "migratedFromCalNotion") else { return }
+        let oldPlist = NSHomeDirectory() + "/Library/Preferences/FarmFresh.CalNotionBar.plist"
+        if let dict = NSDictionary(contentsOfFile: oldPlist) as? [String: Any] {
+            for (key, value) in dict where !key.hasPrefix("NS") {
+                defaults.set(value, forKey: key)
+            }
+            print("[CalBridge] Migrated settings from CalNotionBar")
+        }
+        // Migrate Application Support files
+        let fm = FileManager.default
+        let home = fm.homeDirectoryForCurrentUser
+        let oldDir = home.appendingPathComponent("Library/Application Support/CalNotionBar")
+        let newDir = home.appendingPathComponent("Library/Application Support/CalBridge")
+        if fm.fileExists(atPath: oldDir.path) && !fm.fileExists(atPath: newDir.path) {
+            try? fm.copyItem(at: oldDir, to: newDir)
+            print("[CalBridge] Migrated Application Support from CalNotionBar")
+        }
+        defaults.set(true, forKey: "migratedFromCalNotion")
+    }
+
     func applicationWillTerminate(_ notification: Notification) {
         backendProcess?.terminate()
         todayTimer?.invalidate()
         hoverTimer?.invalidate()
         mouseTimer?.invalidate()
         pollTimer?.invalidate()
+        cacheRefreshTimer?.invalidate()
     }
 }
 // test

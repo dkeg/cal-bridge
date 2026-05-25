@@ -196,7 +196,7 @@ struct SettingsView: View {
             Image(systemName: "calendar.badge.clock")
                 .font(.system(size: 36))
                 .foregroundColor(.accentColor)
-            Text("Cal Notion Bar")
+            Text("CalBridge")
                 .font(.headline)
             Text("v1.1.0 · 2026")
                 .font(.caption)

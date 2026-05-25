@@ -43,33 +43,33 @@ jobs:
           
           APP_PATH=$(find build -name "CalNotionBar.app" -type d | head -1)
           echo "Found app at: $APP_PATH"
-          cp -r "$APP_PATH" ./CalNotionBar.app
+          cp -r "$APP_PATH" ./CalBridge.app
 
       - name: Create .dmg
         run: |
           mkdir -p dmg_contents
-          cp -r CalNotionBar.app dmg_contents/
+          cp -r CalBridge.app dmg_contents/
           ln -s /Applications dmg_contents/Applications
           hdiutil create \
-            -volname "CalNotion" \
+            -volname "CalBridge" \
             -srcfolder dmg_contents \
             -ov \
             -format UDZO \
-            "CalNotion-${{ github.ref_name }}.dmg"
+            "CalBridge-${{ github.ref_name }}.dmg"
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          files: CalNotion-${{ github.ref_name }}.dmg
+          files: CalBridge-${{ github.ref_name }}.dmg
           body: |
-            ## Cal → Notion ${{ github.ref_name }}
+            ## CalBridge ${{ github.ref_name }}
 
             ### Install
-            1. Download `CalNotion-${{ github.ref_name }}.dmg`
-            2. Open the DMG and drag `CalNotionBar.app` to Applications
+            1. Download `CalBridge-${{ github.ref_name }}.dmg`
+            2. Open the DMG and drag `CalBridge.app` to Applications
             3. Run `scripts/install.sh` to configure credentials
             4. Launch from Applications
 
-            See [README](https://github.com/dkeg/cal-notion#readme) for full setup guide.
+            See [README](https://github.com/dkeg/cal-bridge#readme) for full setup guide.
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

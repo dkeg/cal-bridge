@@ -58,7 +58,7 @@ const oauthServer = http.createServer((req, res) => {
   if (url.pathname === "/oauth2callback") {
     const code = url.searchParams.get("code");
     res.writeHead(200, { "Content-Type": "text/html" });
-    res.end("<html><body><h2>Authorization complete!</h2><p>You can close this tab and return to Cal Notion Bar.</p></body></html>");
+    res.end("<html><body><h2>Authorization complete!</h2><p>You can close this tab and return to CalBridge.</p></body></html>");
     if (code) {
       pendingOAuthCode = code;
       console.log("[oauth] code received, ready for exchange");
@@ -357,6 +357,6 @@ app.post("/resync", async (req, res) => {
 // ── Start ─────────────────────────────────────────────────────────────────
 
 app.listen(PORT, () => {
-  console.log(`\n✅ cal-notion backend running on http://localhost:${PORT}`);
+  console.log(`\n✅ calbridge backend running on http://localhost:${PORT}`);
   console.log(`   Health: http://localhost:${PORT}/health\n`);
 });

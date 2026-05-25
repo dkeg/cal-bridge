@@ -34,7 +34,7 @@ All notable changes to Cal → Notion are documented here.
 - **Sunday autorun** — launchd agent fires every Sunday at 9 PM (moved from Monday 7 AM)
 - **Email notifications** — Resend integration sends an email on every post, both manual and autorun
 - **Autorun banner** — "Auto-synced Sunday, May X at 9:00 PM" banner appears on next popover open after autorun fires
-- **Autorun flag file** — `~/Library/Application Support/CalNotionBar/last-run.json` written after each autorun with Notion URL, title, date range, and timestamp
+- **Autorun flag file** — `~/Library/Application Support/CalBridge/last-run.json` written after each autorun with Notion URL, title, date range, and timestamp
 - **`RESEND_API_KEY`** environment variable for email notification support
 
 ### Changed
