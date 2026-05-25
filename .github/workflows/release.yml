@@ -19,7 +19,7 @@ jobs:
       - name: Set up Node
         uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: '24'
 
       - name: Install backend dependencies
         run: |
@@ -29,6 +29,26 @@ jobs:
       - name: Select Xcode
         run: sudo xcode-select -s /Applications/Xcode.app
 
+      - name: Import signing certificate
+        env:
+          APPLE_CERTIFICATE_BASE64: ${{ secrets.APPLE_CERTIFICATE_BASE64 }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+        run: |
+          KEYCHAIN_PASSWORD=$(openssl rand -base64 32)
+          KEYCHAIN_PATH=$RUNNER_TEMP/build.keychain
+
+          security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          security default-keychain -s "$KEYCHAIN_PATH"
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          security set-keychain-settings -lut 21600 "$KEYCHAIN_PATH"
+
+          echo "$APPLE_CERTIFICATE_BASE64" | base64 --decode > /tmp/certificate.p12
+          security import /tmp/certificate.p12 -k "$KEYCHAIN_PATH" \
+            -P "$APPLE_CERTIFICATE_PASSWORD" -T /usr/bin/codesign
+          security set-key-partition-list -S apple-tool:,apple: -s \
+            -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          rm /tmp/certificate.p12
+
       - name: Build Swift app
         run: |
           xcodebuild \
@@ -36,11 +56,12 @@ jobs:
             -scheme CalNotionBar \
             -configuration Release \
             -derivedDataPath build \
-            CODE_SIGN_IDENTITY="-" \
-            CODE_SIGNING_REQUIRED=NO \
-            CODE_SIGNING_ALLOWED=NO \
+            DEVELOPMENT_TEAM=Y8W7627T7W \
+            CODE_SIGN_IDENTITY="Developer ID Application" \
+            CODE_SIGNING_REQUIRED=YES \
+            CODE_SIGNING_ALLOWED=YES \
             ONLY_ACTIVE_ARCH=NO | xcpretty || true
-          
+
           APP_PATH=$(find build -name "CalNotionBar.app" -type d | head -1)
           echo "Found app at: $APP_PATH"
           cp -r "$APP_PATH" ./CalBridge.app
@@ -56,6 +77,20 @@ jobs:
             -ov \
             -format UDZO \
             "CalBridge-${{ github.ref_name }}.dmg"
+
+      - name: Notarize and staple
+        env:
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_APP_PASSWORD: ${{ secrets.APPLE_APP_PASSWORD }}
+          APPLE_TEAM_ID: Y8W7627T7W
+        run: |
+          xcrun notarytool submit "CalBridge-${{ github.ref_name }}.dmg" \
+            --apple-id "$APPLE_ID" \
+            --password "$APPLE_APP_PASSWORD" \
+            --team-id "$APPLE_TEAM_ID" \
+            --wait
+
+          xcrun stapler staple "CalBridge-${{ github.ref_name }}.dmg"
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
