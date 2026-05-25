@@ -21,6 +21,10 @@ class AgentViewModel: ObservableObject {
     @Published var showModify = false
     @Published var hasUnsyncedChanges = false
     let settings = SettingsStore.shared
+
+    var syncTarget: String { settings.syncTarget }
+    var isObsidian: Bool { settings.syncTarget == "obsidian" }
+    var isBoth: Bool { settings.syncTarget == "both" }
     @Published var pendingWeeks = 1
     @Published var persistedNotionURL: String? = nil
     @Published var persistedNotionTitle: String? = nil
@@ -136,7 +140,17 @@ class AgentViewModel: ObservableObject {
     func post() async {
         step = .posting
         do {
-            let result = try await APIClient.shared.postToNotion(days: days, start: start, end: end)
+            let result: NotionResult
+            if isBoth {
+                async let notionResult = APIClient.shared.postToNotion(days: days, start: start, end: end)
+                async let obsidianResult = APIClient.shared.postToObsidian(days: days, start: start, end: end)
+                let (notion, _) = try await (notionResult, obsidianResult)
+                result = notion
+            } else if isObsidian {
+                result = try await APIClient.shared.postToObsidian(days: days, start: start, end: end)
+            } else {
+                result = try await APIClient.shared.postToNotion(days: days, start: start, end: end)
+            }
             notionURL = result.url
             notionTitle = result.title
             notionExisted = result.existed ?? false
@@ -146,6 +160,7 @@ class AgentViewModel: ObservableObject {
         } catch {
             errorMsg = error.localizedDescription
             step = .error
+            AppDelegate.shared?.resizePopover(width: 420, height: 200)
         }
     }
 
@@ -235,6 +250,7 @@ class AgentViewModel: ObservableObject {
 
     func resetForNewSession() {
         guard step != .fetching && step != .posting else { return }
+        settings.reload()
         step = .idle
         days = []
         notionURL = nil
@@ -242,6 +258,8 @@ class AgentViewModel: ObservableObject {
         showModify = false
         weeksAhead = settings.defaultWeeks
         pendingWeeks = settings.defaultWeeks
+        // Reload persisted state after settings reload
+        loadPersistedState()
     }
 
     func reset() {
@@ -435,7 +453,7 @@ struct ContentView: View {
                     Image(systemName: vm.notionExisted ? "exclamationmark.triangle.fill" : "checkmark.circle.fill")
                         .foregroundColor(vm.notionExisted ? .orange : .green)
                         .font(.caption)
-                    Text(vm.notionExisted ? "Page already existed — \(title)" : "Posted — \(title)")
+                    Text(vm.notionExisted ? "Already existed — \(title)" : (vm.isObsidian ? "Written to Obsidian — \(title)" : vm.isBoth ? "Posted to Notion & Obsidian — \(title)" : "Posted to Notion — \(title)"))
                         .font(.caption)
                         .foregroundColor(.secondary)
                 }
@@ -468,7 +486,7 @@ struct ContentView: View {
     var loadingView: some View {
         HStack(spacing: 10) {
             ProgressView().scaleEffect(0.8)
-            Text(vm.step == .posting ? "Creating Notion page…" : "Fetching \(vm.weeksAhead * 7) days of events…")
+            Text(vm.step == .posting ? (vm.isBoth ? "Posting to Notion & Obsidian…" : vm.isObsidian ? "Writing to Obsidian…" : "Creating Notion page…") : "Fetching \(vm.weeksAhead * 7) days of events…")
                 .font(.system(size: 12))
                 .foregroundColor(.secondary)
             Spacer()
@@ -519,13 +537,13 @@ struct ContentView: View {
                 Button {
                     NSWorkspace.shared.open(nsURL)
                 } label: {
-                    Label("Open in Notion", systemImage: "arrow.up.right.square")
+                    Label(vm.isObsidian ? "Open in Obsidian" : "Open in Notion →", systemImage: "arrow.up.right.square")
                         .font(.system(size: 12))
                 }
                 .buttonStyle(.borderedProminent)
                 .controlSize(.regular)
             } else {
-                Button("Post to Notion →") { Task { await vm.post() } }
+                Button(vm.isBoth ? "Post to Both →" : vm.isObsidian ? "Post to Obsidian →" : "Post to Notion →") { Task { await vm.post() } }
                     .buttonStyle(.borderedProminent)
                     .controlSize(.regular)
                     .disabled(vm.step == .fetching || vm.step == .posting)

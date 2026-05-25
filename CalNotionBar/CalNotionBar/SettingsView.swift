@@ -56,7 +56,7 @@ struct SettingsView: View {
             .padding(.horizontal, 20)
             .padding(.vertical, 12)
         }
-        .frame(width: 440, height: 400)
+        .frame(width: 480, height: 420)
         .background(Color(NSColor.windowBackgroundColor))
         .onAppear { loadCalendars() }
     }
@@ -65,6 +65,21 @@ struct SettingsView: View {
 
     var generalTab: some View {
         VStack(alignment: .leading, spacing: 20) {
+            // Sync target
+            HStack {
+                Text("Sync target")
+                    .frame(width: 130, alignment: .leading)
+                Picker("", selection: $store.syncTarget) {
+                    Text("Notion").tag("notion")
+                    Text("Obsidian").tag("obsidian")
+                    Text("Both").tag("both")
+                }
+                .pickerStyle(.segmented)
+                .frame(width: 220)
+            }
+
+            Divider()
+
             // Change detection
             HStack {
                 Text("Change detection")
@@ -131,6 +146,44 @@ struct SettingsView: View {
                 SecureField("re_xxxxxxxxxxxx", text: $store.resendAPIKey)
                     .textFieldStyle(.roundedBorder)
                     .frame(width: 200)
+            }
+
+            if store.syncTarget == "obsidian" || store.syncTarget == "both" {
+                Divider()
+
+                settingsRow(label: "Obsidian API key") {
+                    SecureField("Enter API key", text: $store.obsidianAPIKey)
+                        .textFieldStyle(.roundedBorder)
+                        .frame(width: 200)
+                }
+
+                settingsRow(label: "Vault path") {
+                    TextField("/Users/you/Documents/MyVault", text: $store.obsidianVaultPath)
+                        .textFieldStyle(.roundedBorder)
+                        .frame(width: 200)
+                }
+
+                settingsRow(label: "Folder") {
+                    TextField("Calendar", text: $store.obsidianFolder)
+                        .textFieldStyle(.roundedBorder)
+                        .frame(width: 200)
+                }
+
+                settingsRow(label: "Filename") {
+                    TextField("Upcoming Events.md", text: $store.obsidianFilename)
+                        .textFieldStyle(.roundedBorder)
+                        .frame(width: 200)
+                }
+
+                HStack {
+                    Spacer()
+                    Button("Get Local REST API plugin →") {
+                        NSWorkspace.shared.open(URL(string: "https://github.com/coddingtonbear/obsidian-local-rest-api")!)
+                    }
+                    .font(.caption)
+                    .buttonStyle(.plain)
+                    .foregroundColor(.accentColor)
+                }
             }
         }
     }

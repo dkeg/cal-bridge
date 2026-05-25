@@ -39,7 +39,9 @@ A native macOS menu bar app that fetches events from all your Google Calendars a
 - 📝 Posts a beautifully formatted day-by-day table to Notion
 - 🔁 Auto-runs every Sunday at 9 PM via launchd
 - ✉️ Email notification on every post (manual and autorun)
-- 💾 Persists posted state across relaunches — shows "Open in Notion" when already posted
+- 💾 Persists posted state across relaunches — shows "Open in Notion" or "Open in Obsidian" when already posted
+- 📓 Obsidian support — sync to your Obsidian vault via Local REST API plugin
+- 🔀 Sync target selector — choose Notion, Obsidian, or Both in Settings
 - ✨ Autorun banner shows when the Sunday sync has fired
 - ⚠️ Warns if a page for that date range already exists
 
@@ -120,8 +122,9 @@ Your credentials are stored securely in macOS Keychain — no `.env` editing nee
 2. Hover over the calendar icon — events load automatically
 3. Optionally click **Modify** to change the number of weeks (1–4)
 4. Toggle calendars on/off, edit or remove individual events
-5. Click **Post to Notion →** to post
-6. Button changes to **Open in Notion** once posted — persists across relaunches
+5. Click **Post to Notion →**, **Post to Obsidian →**, or **Post to Both →** depending on your sync target
+6. Button changes to **Open in Notion** or **Open in Obsidian** once posted — persists across relaunches
+7. Change sync target anytime in **Settings → General**
 
 ---
 
@@ -204,9 +207,9 @@ launchd agent (Sunday 9 PM)
 
 | Variable | Description |
 |----------|-------------|
-| `GOOGLE_CLIENT_ID` | Google OAuth client ID |
+| `GOOGLE_CLIENT_ID` | Google OAuth client ID (Desktop app type) |
 | `GOOGLE_CLIENT_SECRET` | Google OAuth client secret |
-| `GOOGLE_REFRESH_TOKEN` | Long-lived refresh token (from `auth.ts`) |
+| `GOOGLE_REFRESH_TOKEN` | Long-lived refresh token (from `auth.ts` or in-app setup) |
 | `NOTION_API_KEY` | Notion integration token |
 | `NOTION_PARENT_PAGE_ID` | ID of the parent Notion page |
 | `RESEND_API_KEY` | Resend API key for email notifications |

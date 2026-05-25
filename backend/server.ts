@@ -6,6 +6,7 @@ import {
   fetchEvents,
   fetchEventsWithSync,
   createNotionPage,
+  createObsidianPage,
   checkExistingPage,
   groupByDay,
   dateRange,
@@ -29,6 +30,11 @@ const PORT = process.env.PORT ?? 8420;
 export const runtimeSettings = {
   notificationEmail: process.env.NOTIFICATION_EMAIL ?? "drewrcraig.9@gmail.com",
   resendAPIKey: process.env.RESEND_API_KEY ?? "",
+  syncTarget: "notion" as "notion" | "obsidian",
+  obsidianAPIKey: "",
+  obsidianVaultPath: "",
+  obsidianFolder: "Calendar",
+  obsidianFilename: "Upcoming Events.md",
 };
 
 // ── Health ────────────────────────────────────────────────────────────────
@@ -149,19 +155,26 @@ app.get("/settings", (_req, res) => {
   res.json({
     notificationEmail: runtimeSettings.notificationEmail,
     resendAPIKey: runtimeSettings.resendAPIKey ? "••••••••" : "",
+    syncTarget: runtimeSettings.syncTarget,
+    obsidianVaultPath: runtimeSettings.obsidianVaultPath,
+    obsidianFolder: runtimeSettings.obsidianFolder,
+    obsidianFilename: runtimeSettings.obsidianFilename,
+    obsidianAPIKey: runtimeSettings.obsidianAPIKey ? "••••••••" : "",
   });
 });
 
 // ── POST /settings ────────────────────────────────────────────────────────
 
 app.post("/settings", (req, res) => {
-  const { notificationEmail, resendAPIKey } = req.body;
+  const { notificationEmail, resendAPIKey, syncTarget, obsidianAPIKey, obsidianVaultPath, obsidianFolder, obsidianFilename } = req.body;
   if (notificationEmail !== undefined) runtimeSettings.notificationEmail = notificationEmail;
   if (resendAPIKey !== undefined && resendAPIKey !== "") runtimeSettings.resendAPIKey = resendAPIKey;
-  console.log("[settings] updated:", {
-    notificationEmail: runtimeSettings.notificationEmail,
-    resendAPIKey: runtimeSettings.resendAPIKey ? "set" : "not set",
-  });
+  if (syncTarget !== undefined) runtimeSettings.syncTarget = syncTarget;
+  if (obsidianAPIKey !== undefined && obsidianAPIKey !== "") runtimeSettings.obsidianAPIKey = obsidianAPIKey;
+  if (obsidianVaultPath !== undefined) runtimeSettings.obsidianVaultPath = obsidianVaultPath;
+  if (obsidianFolder !== undefined) runtimeSettings.obsidianFolder = obsidianFolder;
+  if (obsidianFilename !== undefined) runtimeSettings.obsidianFilename = obsidianFilename;
+  console.log("[settings] updated — syncTarget:", runtimeSettings.syncTarget);
   res.json({ ok: true });
 });
 
@@ -255,6 +268,37 @@ app.post("/notion", async (req, res) => {
     res.json({ ...result, existed: false });
   } catch (e: any) {
     console.error("[/notion]", e.message);
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// ── POST /obsidian ───────────────────────────────────────────────────────────
+
+app.post("/obsidian", async (req, res) => {
+  try {
+    const { days, start, end }: { days: DayGroup[]; start: string; end: string } = req.body;
+    const result = await createObsidianPage(days, start, end, {
+      apiKey: runtimeSettings.obsidianAPIKey,
+      vaultPath: runtimeSettings.obsidianVaultPath,
+      folder: runtimeSettings.obsidianFolder,
+      filename: runtimeSettings.obsidianFilename,
+    });
+
+    const eventCount = days.reduce((sum, d) => sum + d.events.length, 0);
+    sendNotification({
+      title: result.title,
+      url: result.url,
+      start,
+      end,
+      eventCount,
+      source: "manual",
+      email: runtimeSettings.notificationEmail,
+      apiKey: runtimeSettings.resendAPIKey,
+    }).catch(e => console.error("[notify]", e.message));
+
+    res.json({ ...result, existed: false });
+  } catch (e: any) {
+    console.error("[/obsidian]", e.message);
     res.status(500).json({ error: e.message });
   }
 });

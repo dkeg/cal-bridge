@@ -30,7 +30,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                 self.showSetupWindow()
             }
         } else {
-            // Sync existing Keychain credentials to backend after it starts
+            // Sync existing Keychain credentials and settings to backend after it starts
             DispatchQueue.global().asyncAfter(deadline: .now() + 4) {
                 self.syncKeychainToBackend()
             }
@@ -65,6 +65,10 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
         DispatchQueue.global().asyncAfter(deadline: .now() + 3) {
             self.waitForBackendThenFetch()
+        }
+        // Sync settings after backend is ready
+        DispatchQueue.global().asyncAfter(deadline: .now() + 6) {
+            self.syncSettingsToBackend()
         }
         todayTimer = Timer.scheduledTimer(withTimeInterval: 300, repeats: true) { [weak self] _ in
             self?.fetchTodayCount()
@@ -110,6 +114,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             popover.contentSize = NSSize(width: 420, height: 80)
             popover.show(relativeTo: button.bounds, of: button, preferredEdge: .minY)
             NSApp.activate(ignoringOtherApps: true)
+            syncSettingsToBackend()
             Task { @MainActor in
                 self.sharedVM?.resetForNewSession()
                 await self.sharedVM?.autoLoad()
@@ -147,12 +152,15 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
     func waitForBackendThenFetch() {
         guard let url = URL(string: "http://localhost:8420/health") else { return }
-        URLSession.shared.dataTask(with: url) { [weak self] data, _, _ in
+        URLSession.shared.dataTask(with: url) { [weak self] data, _, error in
+            try? "health response — data: \(data?.count ?? 0) error: \(error?.localizedDescription ?? "none")".write(toFile: "/tmp/health-debug.txt", atomically: true, encoding: .utf8)
             if let data = data,
                let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
                let ok = json["ok"] as? Bool, ok {
+                try? "waitForBackend success".write(toFile: "/tmp/wait-debug2.txt", atomically: true, encoding: .utf8)
                 self?.fetchTodayCount()
                 self?.pollForChanges()
+                self?.syncSettingsToBackend()
             } else {
                 DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
                     self?.waitForBackendThenFetch()
@@ -269,7 +277,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         if settingsWindow == nil {
             let view = NSHostingView(rootView: SettingsView())
             let window = NSWindow(
-                contentRect: NSRect(x: 0, y: 0, width: 440, height: 400),
+                contentRect: NSRect(x: 0, y: 0, width: 480, height: 420),
                 styleMask: [.titled, .closable],
                 backing: .buffered,
                 defer: false
@@ -321,6 +329,38 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         NSApp.activate(ignoringOtherApps: true)
     }
 
+    func syncSettingsToBackend() {
+        // Read directly from plist — UserDefaults.standard uses wrong domain
+        let plistPath = NSHomeDirectory() + "/Library/Preferences/FarmFresh.CalNotionBar.plist"
+        guard let dict = NSDictionary(contentsOfFile: plistPath) as? [String: Any] else {
+            print("[settings] plist not found at \(plistPath)")
+            return
+        }
+        let syncTarget = dict["syncTarget"] as? String ?? "notion"
+        print("[settings] syncing — syncTarget: \(syncTarget)")
+        guard let url = URL(string: "http://localhost:8420/settings") else { return }
+        var req = URLRequest(url: url)
+        req.httpMethod = "POST"
+        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        let body: [String: Any] = [
+            "syncTarget": syncTarget,
+            "obsidianAPIKey": dict["obsidianAPIKey"] as? String ?? "",
+            "obsidianVaultPath": dict["obsidianVaultPath"] as? String ?? "",
+            "obsidianFolder": dict["obsidianFolder"] as? String ?? "Calendar",
+            "obsidianFilename": dict["obsidianFilename"] as? String ?? "Upcoming Events.md",
+            "notificationEmail": dict["notificationEmail"] as? String ?? "",
+            "resendAPIKey": dict["resendAPIKey"] as? String ?? "",
+        ]
+        req.httpBody = try? JSONSerialization.data(withJSONObject: body)
+        URLSession.shared.dataTask(with: req) { _, _, err in
+            if let err = err {
+                print("[settings] sync error: \(err)")
+            } else {
+                print("[settings] sync complete — syncTarget: \(syncTarget)")
+            }
+        }.resume()
+    }
+
     func syncKeychainToBackend() {
         guard let url = URL(string: "http://localhost:8420/credentials") else { return }
         var req = URLRequest(url: url)
@@ -342,3 +382,4 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         pollTimer?.invalidate()
     }
 }
+// test

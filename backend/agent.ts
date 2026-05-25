@@ -586,3 +586,116 @@ function mapEvent(item: any, calendarLabel: string): CalEvent {
     allDay,
   };
 }
+
+// ── Obsidian Integration ──────────────────────────────────────────────────
+
+import * as https from "https";
+import nodeFetch from "node-fetch";
+const obsidianAgent = new https.Agent({ rejectUnauthorized: false });
+const obsidianFetch = (url: string, options: any) => nodeFetch(url, { ...options, agent: obsidianAgent });
+
+export async function createObsidianPage(
+  days: DayGroup[],
+  start: string,
+  end: string,
+  options: {
+    apiKey: string;
+    vaultPath: string;
+    folder: string;
+    filename: string;
+  }
+): Promise<{ url: string | null; title: string }> {
+  const totalEvents = days.reduce((sum, d) => sum + d.events.length, 0);
+  const title = `Upcoming Events — ${start} to ${end}`;
+
+  // Build Obsidian-native markdown
+  const lines: string[] = [
+    `# 📅 Upcoming Events`,
+    `*${formatDisplayDate(start)} → ${formatDisplayDate(end)} · ${totalEvents} events*`,
+    ``,
+  ];
+
+  for (const day of days) {
+    lines.push(`## ${formatDayHeader(day.date)}`);
+    for (const event of day.events) {
+      const time = event.allDay ? "All day" : `${formatTime(event.start ?? "")} – ${formatTime(event.end ?? "")}`;
+      lines.push(`- ${time} · ${event.title} · *${event.calendar}*`);
+    }
+    lines.push(``);
+  }
+
+  const markdown = lines.join("\n");
+
+  // Ensure folder exists
+  if (options.folder) {
+    await ensureObsidianFolder(options.folder, options.apiKey);
+  }
+
+  // Write to Obsidian vault via Local REST API
+  const folder = options.folder ? `${options.folder}/` : "";
+  const filename = options.filename.endsWith(".md") ? options.filename : `${options.filename}.md`;
+  const filePath = `${folder}${filename}`;
+
+  const obsidianURL = `https://127.0.0.1:27124/vault/${encodeURIComponent(filePath)}`;
+
+  const res = await obsidianFetch(obsidianURL, {
+    method: "PUT",
+    headers: {
+      "Content-Type": "text/markdown",
+      "Authorization": `Bearer ${options.apiKey}`,
+    },
+    body: markdown,
+  });
+
+  if (!res.ok) {
+    const err = await res.text();
+    throw new Error(`Obsidian API error: ${err}`);
+  }
+
+  console.log(`[obsidian] Written to vault: ${filePath}`);
+
+  return {
+    url: `obsidian://open?vault=${encodeURIComponent(options.vaultPath)}&file=${encodeURIComponent(filePath)}`,
+    title,
+  };
+}
+
+function formatDisplayDate(dateStr: string): string {
+  const d = new Date(dateStr + "T12:00:00");
+  return d.toLocaleDateString([], { month: "short", day: "numeric" });
+}
+
+function formatDayHeader(dateStr: string): string {
+  const d = new Date(dateStr + "T12:00:00");
+  return d.toLocaleDateString([], { weekday: "long", month: "long", day: "numeric" });
+}
+
+function formatTime(iso: string): string {
+  if (!iso) return "";
+  const d = new Date(iso);
+  return d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+}
+
+// ── Obsidian folder creation helper ──────────────────────────────────────
+
+export async function ensureObsidianFolder(folder: string, apiKey: string): Promise<void> {
+  if (!folder) return;
+  const url = `https://127.0.0.1:27124/vault/${encodeURIComponent(folder)}/`;
+  const res = await obsidianFetch(url, {
+    method: "GET",
+    headers: { "Authorization": `Bearer ${apiKey}` },
+  });
+  if (res.status === 404) {
+    // Create folder by putting a placeholder file then deleting it
+    const placeholderURL = `https://127.0.0.1:27124/vault/${encodeURIComponent(folder)}/.gitkeep`;
+    await obsidianFetch(placeholderURL, {
+      method: "PUT",
+      headers: {
+        "Content-Type": "text/plain",
+        "Authorization": `Bearer ${apiKey}`,
+      },
+      body: "",
+    });
+    console.log(`[obsidian] Created folder: ${folder}`);
+  }
+}

@@ -108,6 +108,27 @@ class APIClient {
         return (events, start, end)
     }
 
+    func postToObsidian(days: [DayGroup], start: String, end: String) async throws -> NotionResult {
+        var req = URLRequest(url: URL(string: "\(base)/obsidian")!)
+        req.httpMethod = "POST"
+        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        let daysPayload = days.map { day -> [String: Any] in [
+            "date": day.date,
+            "events": day.events.map { e -> [String: Any] in [
+                "date": e.date,
+                "start": e.start as Any,
+                "end": e.end as Any,
+                "title": e.title,
+                "calendar": e.calendar,
+                "allDay": e.allDay
+            ]}
+        ]}
+        let body: [String: Any] = ["days": daysPayload, "start": start, "end": end]
+        req.httpBody = try JSONSerialization.data(withJSONObject: body)
+        let (data, _) = try await URLSession.shared.data(for: req)
+        return (try? JSONDecoder().decode(NotionResult.self, from: data)) ?? NotionResult()
+    }
+
     func postToNotion(days: [DayGroup], start: String, end: String) async throws -> NotionResult {
         var req = URLRequest(url: URL(string: "\(base)/notion")!)
         req.httpMethod = "POST"
