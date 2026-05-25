@@ -85,40 +85,32 @@ chmod +x scripts/install.sh
 - A Notion account
 - A [Resend](https://resend.com) account (free tier, for email notifications)
 
-### Google Calendar API
+### First-time setup
 
-1. Go to [console.cloud.google.com](https://console.cloud.google.com)
-2. Create a new project (e.g. "cal-notion")
-3. Enable **Google Calendar API** → APIs & Services → Library
-4. Create credentials → OAuth 2.0 Client ID → Desktop app
-5. Configure OAuth consent screen → External → add yourself as a test user
-6. Copy your **Client ID** and **Client Secret**
+Cal Notion Bar includes a built-in setup flow — no terminal or config file editing required.
 
-### Notion Integration
+1. Launch `CalNotionBar.app` from `/Applications`
+2. The setup window appears automatically on first launch
+3. Click **Connect with Google** — your browser opens for OAuth authorization
+4. Authorize access to Google Calendar
+5. Return to the app — it captures the token automatically
+6. Enter your Notion integration token (get it at [notion.so/my-integrations](https://notion.so/my-integrations))
+7. Click **Finish Setup**
+
+Your credentials are stored securely in macOS Keychain — no `.env` editing needed.
+
+### Notion page setup
 
 1. Go to [notion.so/my-integrations](https://notion.so/my-integrations)
 2. Create a new integration → copy the **Integration Token**
 3. Open the Notion page you want to post under
 4. Click `···` → Connections → connect your integration
-5. Copy the **Page ID** from the page URL (32-char string after the last `/`)
 
 ### Resend (email notifications)
 
 1. Sign up at [resend.com](https://resend.com)
 2. Copy your **API Key** from the dashboard
-3. Add it to your `.env` as `RESEND_API_KEY`
-
-### Run setup
-
-```bash
-./scripts/install.sh
-```
-
-The script will:
-- Install Node dependencies
-- Collect your credentials and write `.env`
-- Open a browser for Google OAuth (gets your refresh token)
-- Optionally set up the Sunday night auto-run
+3. Enter it in **Settings → Configuration → Resend API Key**
 
 ---
 
