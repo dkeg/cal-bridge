@@ -25,3 +25,5 @@ DerivedData/
 *.log
 .DS_Store
 *.xcuserstate
+*.plist
+CalNotionBar/CalNotionBar/client_*.plist

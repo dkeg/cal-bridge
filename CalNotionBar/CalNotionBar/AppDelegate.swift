@@ -12,7 +12,9 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
     static var shared: AppDelegate?
     var settingsWindow: NSWindow?
+    var setupWindow: NSWindow?
     var sharedVM: AgentViewModel?
+    var pendingOAuthCompletion: ((String) -> Void)?
     var pollTimer: Timer?
     var hasUnsyncedChanges = false {
         didSet { updateMenuBarIcon() }
@@ -21,6 +23,18 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationDidFinishLaunching(_ notification: Notification) {
         AppDelegate.shared = self
         NSApp.setActivationPolicy(.accessory)
+
+        // Check if setup is needed
+        if !UserDefaults.standard.bool(forKey: "setupComplete") || !KeychainHelper.shared.hasCredentials {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                self.showSetupWindow()
+            }
+        } else {
+            // Sync existing Keychain credentials to backend after it starts
+            DispatchQueue.global().asyncAfter(deadline: .now() + 4) {
+                self.syncKeychainToBackend()
+            }
+        }
 
         if #available(macOS 13.0, *) {
             try? SMAppService.mainApp.register()
@@ -162,11 +176,13 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func startBackendAt(path: String) {
-        let killer = Process()
-        killer.executableURL = URL(fileURLWithPath: "/bin/sh")
-        killer.arguments = ["-c", "lsof -ti:8420 | xargs kill -9 2>/dev/null || true"]
-        try? killer.run()
-        killer.waitUntilExit()
+        // Only kill existing backend if we started it (check via lockfile)
+        let lockFile = "/tmp/calnotion-backend.pid"
+        if let pidStr = try? String(contentsOfFile: lockFile),
+           let pid = Int(pidStr.trimmingCharacters(in: .whitespacesAndNewlines)) {
+            kill(Int32(pid), SIGTERM)
+            Thread.sleep(forTimeInterval: 0.5)
+        }
 
         let process = Process()
         process.executableURL = URL(fileURLWithPath: path + "/node_modules/.bin/ts-node")
@@ -193,6 +209,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             try process.run()
             backendProcess = process
             print("[CalNotionBar] Backend started at pid \(process.processIdentifier)")
+            try? "\(process.processIdentifier)".write(toFile: "/tmp/calnotion-backend.pid", atomically: true, encoding: .utf8)
         } catch {
             print("[CalNotionBar] Failed to start backend: \(error)")
         }
@@ -265,6 +282,56 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         }
         settingsWindow?.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)
+    }
+
+    func application(_ application: NSApplication, open urls: [URL]) {
+        guard let url = urls.first,
+              let components = URLComponents(url: url, resolvingAgainstBaseURL: false),
+              let code = components.queryItems?.first(where: { $0.name == "code" })?.value else { return }
+        print("[oauth] received callback with code")
+        // Store code for backend polling
+        guard let backendURL = URL(string: "http://localhost:8420/oauth/store-code") else { return }
+        var req = URLRequest(url: backendURL)
+        req.httpMethod = "POST"
+        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        req.httpBody = try? JSONSerialization.data(withJSONObject: ["code": code])
+        URLSession.shared.dataTask(with: req).resume()
+    }
+
+    func showSetupWindow() {
+        if setupWindow == nil {
+            let view = SetupView {
+                self.setupWindow?.close()
+                self.setupWindow = nil
+                self.syncKeychainToBackend()
+            }
+            let window = NSWindow(
+                contentRect: NSRect(x: 0, y: 0, width: 460, height: 420),
+                styleMask: [.titled],
+                backing: .buffered,
+                defer: false
+            )
+            window.title = "Set Up Cal Notion Bar"
+            window.contentView = NSHostingView(rootView: view)
+            window.center()
+            window.isReleasedWhenClosed = false
+            setupWindow = window
+        }
+        setupWindow?.makeKeyAndOrderFront(nil)
+        NSApp.activate(ignoringOtherApps: true)
+    }
+
+    func syncKeychainToBackend() {
+        guard let url = URL(string: "http://localhost:8420/credentials") else { return }
+        var req = URLRequest(url: url)
+        req.httpMethod = "POST"
+        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        let body: [String: Any] = [
+            "googleRefreshToken": KeychainHelper.shared.load(KeychainHelper.googleRefreshToken) ?? "",
+            "notionAPIKey": KeychainHelper.shared.load(KeychainHelper.notionAPIKey) ?? ""
+        ]
+        req.httpBody = try? JSONSerialization.data(withJSONObject: body)
+        URLSession.shared.dataTask(with: req).resume()
     }
 
     func applicationWillTerminate(_ notification: Notification) {

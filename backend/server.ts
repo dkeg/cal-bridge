@@ -36,10 +36,111 @@ export const runtimeSettings = {
 app.get("/health", (_req, res) => {
   const missing = [];
   if (!process.env.GOOGLE_CLIENT_ID) missing.push("GOOGLE_CLIENT_ID");
-  if (!process.env.GOOGLE_CLIENT_SECRET) missing.push("GOOGLE_CLIENT_SECRET");
   if (!process.env.GOOGLE_REFRESH_TOKEN) missing.push("GOOGLE_REFRESH_TOKEN");
   if (!process.env.NOTION_API_KEY) missing.push("NOTION_API_KEY");
   res.json({ ok: missing.length === 0, missing, ts: new Date().toISOString() });
+});
+
+// ── OAuth callback server (port 8421) ────────────────────────────────────────
+
+import * as http from "http";
+
+let pendingOAuthCode: string | null = null;
+
+const oauthServer = http.createServer((req, res) => {
+  const url = new URL(req.url ?? "/", "http://localhost:8421");
+  if (url.pathname === "/oauth2callback") {
+    const code = url.searchParams.get("code");
+    res.writeHead(200, { "Content-Type": "text/html" });
+    res.end("<html><body><h2>Authorization complete!</h2><p>You can close this tab and return to Cal Notion Bar.</p></body></html>");
+    if (code) {
+      pendingOAuthCode = code;
+      console.log("[oauth] code received, ready for exchange");
+    }
+  } else {
+    res.writeHead(404);
+    res.end();
+  }
+});
+
+oauthServer.listen(8421, () => {
+  console.log("OAuth callback server running on http://localhost:8421");
+});
+
+// ── POST /oauth/store-code ───────────────────────────────────────────────────
+
+app.post("/oauth/store-code", (req, res) => {
+  const { code } = req.body;
+  if (code) {
+    pendingOAuthCode = code;
+    console.log("[oauth] code stored from URI callback");
+  }
+  res.json({ ok: true });
+});
+
+// ── GET /oauth/code ──────────────────────────────────────────────────────────
+
+app.get("/oauth/code", (_req, res) => {
+  if (pendingOAuthCode) {
+    const code = pendingOAuthCode;
+    pendingOAuthCode = null;
+    res.json({ code });
+  } else {
+    res.json({ code: null });
+  }
+});
+
+// ── POST /oauth/exchange ─────────────────────────────────────────────────────
+
+app.post("/oauth/exchange", async (req, res) => {
+  try {
+    const { code, redirectURI } = req.body;
+    const clientId = process.env.GOOGLE_CLIENT_ID;
+    const clientSecret = process.env.GOOGLE_CLIENT_SECRET;
+
+    if (!clientId) {
+      return res.status(500).json({ error: "Missing Google credentials in .env" });
+    }
+
+    // iOS clients don't use client_secret
+    const isIOSClient = clientId.includes(".apps.googleusercontent.com") && !clientSecret;
+    const params = new URLSearchParams({
+      code,
+      client_id: clientId,
+      redirect_uri: redirectURI || "com.googleusercontent.apps.89308251794-5vntu2vjqs36mdpcetqn0lb4oi0tke8t:/oauth2callback",
+      grant_type: "authorization_code",
+      ...(clientSecret ? { client_secret: clientSecret } : {}),
+    });
+
+    const response = await fetch("https://oauth2.googleapis.com/token", {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body: params.toString(),
+    });
+
+    const data = await response.json() as any;
+    if (data.refresh_token) {
+      process.env.GOOGLE_REFRESH_TOKEN = data.refresh_token;
+      console.log("[oauth] refresh token obtained and set");
+      res.json({ refresh_token: data.refresh_token });
+    } else {
+      console.error("[oauth] no refresh token:", data);
+      res.status(400).json({ error: data.error ?? "No refresh token returned" });
+    }
+  } catch (e: any) {
+    console.error("[oauth/exchange]", e.message);
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// ── POST /credentials ────────────────────────────────────────────────────────
+
+app.post("/credentials", (req, res) => {
+  const { googleRefreshToken, notionAPIKey } = req.body;
+  if (googleRefreshToken) process.env.GOOGLE_REFRESH_TOKEN = googleRefreshToken;
+  if (notionAPIKey) process.env.NOTION_API_KEY = notionAPIKey;
+  console.log("[credentials] updated from Keychain");
+  res.json({ ok: true });
 });
 
 // ── GET /settings ─────────────────────────────────────────────────────────
