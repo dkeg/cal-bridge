@@ -62,6 +62,8 @@ jobs:
             CODE_SIGNING_REQUIRED=YES \
             CODE_SIGNING_ALLOWED=YES \
             ENABLE_HARDENED_RUNTIME=YES \
+            CODE_SIGN_INJECT_BASE_ENTITLEMENTS=NO \
+            OTHER_CODE_SIGN_FLAGS="--timestamp" \
             ONLY_ACTIVE_ARCH=NO 2>&1
 
           APP_PATH=$(find build -name "CalNotionBar.app" -type d | head -1)
