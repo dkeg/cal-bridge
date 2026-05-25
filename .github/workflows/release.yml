@@ -61,6 +61,7 @@ jobs:
             CODE_SIGN_STYLE=Manual \
             CODE_SIGNING_REQUIRED=YES \
             CODE_SIGNING_ALLOWED=YES \
+            ENABLE_HARDENED_RUNTIME=YES \
             ONLY_ACTIVE_ARCH=NO 2>&1
 
           APP_PATH=$(find build -name "CalNotionBar.app" -type d | head -1)
@@ -89,7 +90,21 @@ jobs:
             --apple-id "$APPLE_ID" \
             --password "$APPLE_APP_PASSWORD" \
             --team-id "$APPLE_TEAM_ID" \
-            --wait
+            --wait \
+            --output-format json > notarize-result.json
+          cat notarize-result.json
+
+          STATUS=$(python3 -c "import json; print(json.load(open('notarize-result.json'))['status'])")
+          ID=$(python3 -c "import json; print(json.load(open('notarize-result.json'))['id'])")
+
+          if [ "$STATUS" != "Accepted" ]; then
+            echo "Notarization failed: $STATUS — fetching log..."
+            xcrun notarytool log "$ID" \
+              --apple-id "$APPLE_ID" \
+              --password "$APPLE_APP_PASSWORD" \
+              --team-id "$APPLE_TEAM_ID"
+            exit 1
+          fi
 
           xcrun stapler staple "CalBridge-${{ github.ref_name }}.dmg"
 
