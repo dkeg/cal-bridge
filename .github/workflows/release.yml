@@ -60,7 +60,7 @@ jobs:
             CODE_SIGN_IDENTITY="Developer ID Application" \
             CODE_SIGNING_REQUIRED=YES \
             CODE_SIGNING_ALLOWED=YES \
-            ONLY_ACTIVE_ARCH=NO | xcpretty || true
+            ONLY_ACTIVE_ARCH=NO 2>&1
 
           APP_PATH=$(find build -name "CalNotionBar.app" -type d | head -1)
           echo "Found app at: $APP_PATH"
