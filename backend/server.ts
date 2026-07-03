@@ -204,6 +204,25 @@ app.get("/today", async (_req, res) => {
   }
 });
 
+// ── GET /next-event ──────────────────────────────────────────────────────────
+// Next upcoming timed event across the coming week, for the menu bar display.
+
+app.get("/next-event", async (_req, res) => {
+  try {
+    const { start, end } = dateRange(1);
+    const calendars = await listCalendars();
+    const events = await fetchEvents(calendars, start, end);
+    const now = Date.now();
+    const next = events
+      .filter((e) => !e.allDay && e.start && new Date(e.start).getTime() > now)
+      .sort((a, b) => new Date(a.start!).getTime() - new Date(b.start!).getTime())[0];
+    res.json({ event: next ?? null });
+  } catch (e: any) {
+    console.error("[/next-event]", e.message);
+    res.status(500).json({ error: e.message });
+  }
+});
+
 // ── POST /events ──────────────────────────────────────────────────────────
 
 app.post("/events", async (req, res) => {

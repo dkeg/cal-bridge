@@ -94,6 +94,20 @@ struct SettingsView: View {
 
             Divider()
 
+            // Menu bar next event
+            HStack {
+                Text("Menu bar")
+                    .frame(width: 130, alignment: .leading)
+                Toggle("", isOn: $store.showNextEventInMenuBar)
+                    .toggleStyle(.switch)
+                    .labelsHidden()
+                Text("Show next event's time and title")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+            }
+
+            Divider()
+
             // Default weeks
             HStack {
                 Text("Default weeks")
@@ -198,7 +212,7 @@ struct SettingsView: View {
                 .foregroundColor(.accentColor)
             Text("CalBridge")
                 .font(.headline)
-            Text("v1.1.0 · 2026")
+            Text("v\(SettingsView.appVersion) · 2026")
                 .font(.caption)
                 .foregroundColor(.secondary)
             Spacer()
@@ -243,14 +257,18 @@ struct SettingsView: View {
         }.resume()
     }
 
+    static var appVersion: String {
+        Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "0.0.0"
+    }
+
     func checkForUpdates() {
-        guard let url = URL(string: "https://api.github.com/repos/dkeg/cal-notion/releases/latest") else { return }
+        guard let url = URL(string: "https://api.github.com/repos/dkeg/cal-bridge/releases/latest") else { return }
         URLSession.shared.dataTask(with: url) { data, _, _ in
             guard let data = data,
                   let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
                   let tag = json["tag_name"] as? String else { return }
             DispatchQueue.main.async {
-                let current = "v1.1.0"
+                let current = "v\(SettingsView.appVersion)"
                 let isNewer = tag.compare(current, options: .numeric) == .orderedDescending
                 if isNewer {
                     let alert = NSAlert()
@@ -259,7 +277,7 @@ struct SettingsView: View {
                     alert.addButton(withTitle: "Open GitHub")
                     alert.addButton(withTitle: "Dismiss")
                     if alert.runModal() == .alertFirstButtonReturn {
-                        NSWorkspace.shared.open(URL(string: "https://github.com/dkeg/cal-notion/releases")!)
+                        NSWorkspace.shared.open(URL(string: "https://github.com/dkeg/cal-bridge/releases")!)
                     }
                 } else {
                     let alert = NSAlert()

@@ -32,11 +32,13 @@ A native macOS menu bar app that fetches events from all your Google Calendars a
 ## Features
 
 - 🗓️ Hover over the menu bar icon — events load instantly from cache
+- 🕐 Optional menu bar display of your next upcoming event's time and title
 - 📅 Fetches 1 week by default; modify to 1–4 weeks inline
 - ✏️ Preview and edit events before posting
 - 📝 Posts a beautifully formatted day-by-day table to Notion
 - 📓 Obsidian support — sync to your Obsidian vault via Local REST API plugin
 - 🔀 Sync target selector — choose Notion, Obsidian, or Both in Settings
+- 🗂️ Compact calendar filter dropdown — toggle individual calendars without cluttering the popover
 - 🔁 Auto-runs every Sunday at 9 PM via launchd
 - ✉️ Email notification on every post (manual and autorun)
 - 💾 Persists posted state across relaunches — shows "Open in Notion" or "Open in Obsidian" when already posted
@@ -130,6 +132,7 @@ Your credentials are stored securely in macOS Keychain — no `.env` editing nee
 5. Click **Post to Notion →**, **Post to Obsidian →**, or **Post to Both →** depending on your sync target
 6. Button changes to **Open in Notion** or **Open in Obsidian** once posted — persists across relaunches
 7. Change sync target anytime in **Settings → General**
+8. Enable **Settings → General → Menu bar** to show your next event's time and title next to the icon
 
 ---
 

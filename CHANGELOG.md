@@ -1,6 +1,24 @@
 # Changelog
 
-All notable changes to Cal → Notion are documented here.
+All notable changes to CalBridge are documented here.
+
+---
+
+## [1.14.0] — 2026-07-03
+
+### Added
+- **Menu bar next-event display** — optional toggle in Settings → General shows your next upcoming event's time and title next to the menu bar icon
+- **`GET /next-event`** backend endpoint — returns the next timed event in the coming week
+
+### Changed
+- **Calendar filter** — the popover's "Calendars — tap to toggle" chip grid is now a compact "Calendars (X/Y) ▾" dropdown menu, so it no longer takes up a lot of room for accounts with many calendars
+
+### Fixed
+- **"Check for updates"** was comparing against a hardcoded `v1.1.0` and querying the pre-rebrand `dkeg/cal-notion` repo, so it never reported the correct status — now reads the real bundle version and checks `dkeg/cal-bridge`
+- Setup window's "Need help?" link pointed at the old `dkeg/cal-notion` repo
+- Menu bar icon and next-event text could render on slightly different vertical baselines — now composed as a single attributed string so they align
+- Menu bar icon briefly rendered as a non-template (wrong-colored) image on launch before the first background poll
+- Removed leftover debug file writes to `/tmp/health-debug.txt` and `/tmp/wait-debug2.txt`
 
 ---
 

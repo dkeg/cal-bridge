@@ -48,6 +48,14 @@ class SettingsStore: ObservableObject {
         didSet { defaults.set(changeDetectionEnabled, forKey: "changeDetectionEnabled") }
     }
 
+    // MARK: - Menu Bar
+    @Published var showNextEventInMenuBar: Bool {
+        didSet {
+            defaults.set(showNextEventInMenuBar, forKey: "showNextEventInMenuBar")
+            AppDelegate.shared?.fetchNextEventForMenuBar()
+        }
+    }
+
     // MARK: - Init
     private init() {
         defaultWeeks = defaults.integer(forKey: "defaultWeeks").nonZero ?? 1
@@ -60,6 +68,7 @@ class SettingsStore: ObservableObject {
         notificationEmail = defaults.string(forKey: "notificationEmail") ?? ""
         changeDetectionEnabled = defaults.bool(forKey: "changeDetectionEnabled") == false ? true : defaults.bool(forKey: "changeDetectionEnabled")
         resendAPIKey = defaults.string(forKey: "resendAPIKey") ?? ""
+        showNextEventInMenuBar = defaults.bool(forKey: "showNextEventInMenuBar")
     }
 
     // MARK: - Sync to backend
@@ -108,5 +117,6 @@ extension SettingsStore {
         resendAPIKey = defaults.string(forKey: "resendAPIKey") ?? ""
         changeDetectionEnabled = defaults.bool(forKey: "changeDetectionEnabled")
         defaultWeeks = defaults.integer(forKey: "defaultWeeks").nonZero ?? 1
+        showNextEventInMenuBar = defaults.bool(forKey: "showNextEventInMenuBar")
     }
 }

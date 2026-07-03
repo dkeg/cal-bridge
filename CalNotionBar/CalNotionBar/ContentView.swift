@@ -410,17 +410,24 @@ struct ContentView: View {
     var calendarChips: some View {
         Group {
             if !vm.calendars.isEmpty {
-                VStack(alignment: .leading, spacing: 6) {
-                    Text("Calendars — tap to toggle")
-                        .font(.caption)
-                        .foregroundColor(.secondary)
-                    FlowLayout(spacing: 6) {
-                        ForEach(vm.calendars) { cal in
-                            Button(cal.label) { vm.toggleCalendar(cal.id) }
-                                .buttonStyle(ChipButtonStyle(enabled: cal.enabled))
-                        }
+                let enabledCount = vm.calendars.filter(\.enabled).count
+                Menu {
+                    ForEach(vm.calendars) { cal in
+                        Toggle(cal.label, isOn: Binding(
+                            get: { cal.enabled },
+                            set: { _ in vm.toggleCalendar(cal.id) }
+                        ))
                     }
+                } label: {
+                    HStack(spacing: 4) {
+                        Text("Calendars")
+                        Text("(\(enabledCount)/\(vm.calendars.count))")
+                            .foregroundColor(.secondary)
+                    }
+                    .font(.caption)
                 }
+                .menuStyle(.borderlessButton)
+                .fixedSize()
             }
         }
     }

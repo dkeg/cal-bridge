@@ -68,7 +68,7 @@ struct SetupView: View {
             // Footer
             HStack {
                 Button("Need help?") {
-                    NSWorkspace.shared.open(URL(string: "https://github.com/dkeg/cal-notion#setup")!)
+                    NSWorkspace.shared.open(URL(string: "https://github.com/dkeg/cal-bridge#setup")!)
                 }
                 .buttonStyle(.plain)
                 .font(.caption)

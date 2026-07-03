@@ -20,6 +20,9 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     var hasUnsyncedChanges = false {
         didSet { updateMenuBarIcon() }
     }
+    var nextEvent: CalEvent? = nil {
+        didSet { updateMenuBarIcon() }
+    }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         AppDelegate.shared = self
@@ -45,7 +48,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         startBackend()
 
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
-        updateMenuBarTitle()
+        updateMenuBarIcon()
 
         if let button = statusItem?.button {
             button.action = #selector(togglePopover)
@@ -139,27 +142,66 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
-    func updateMenuBarTitle() {
-        DispatchQueue.main.async {
-            if let button = self.statusItem?.button {
-                let config = NSImage.SymbolConfiguration(pointSize: 20, weight: .medium)
-                let image = NSImage(systemSymbolName: "calendar", accessibilityDescription: "Calendar")?
-                    .withSymbolConfiguration(config)
-                button.image = image
-                button.imagePosition = .imageOnly
-                button.title = ""
+    func fetchNextEventForMenuBar() {
+        guard SettingsStore.shared.showNextEventInMenuBar else {
+            nextEvent = nil
+            return
+        }
+        guard let url = URL(string: "http://localhost:8420/next-event") else { return }
+        URLSession.shared.dataTask(with: url) { [weak self] data, _, _ in
+            guard let data = data,
+                  let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { return }
+            var event: CalEvent? = nil
+            if let eventDict = json["event"] as? [String: Any],
+               let eventData = try? JSONSerialization.data(withJSONObject: eventDict) {
+                event = try? JSONDecoder().decode(CalEvent.self, from: eventData)
+            }
+            DispatchQueue.main.async { self?.nextEvent = event }
+        }.resume()
+    }
+
+    static func menuBarAttributedTitle(icon: NSImage, event: CalEvent) -> NSAttributedString {
+        let font = NSFont.menuBarFont(ofSize: 0)
+        let iconSize: CGFloat = 15
+
+        let attachment = NSTextAttachment()
+        attachment.image = icon
+        // NSTextAttachment bounds are relative to the text baseline (y = 0).
+        // Keep the icon at a legible size, but center it on the text's cap
+        // height so it doesn't visually sit lower than the text.
+        attachment.bounds = CGRect(x: 0, y: (font.capHeight - iconSize) / 2, width: iconSize, height: iconSize)
+
+        let result = NSMutableAttributedString(attachment: attachment)
+        result.append(NSAttributedString(
+            string: "  " + menuBarLabel(for: event),
+            attributes: [.font: font]
+        ))
+        return result
+    }
+
+    static func menuBarLabel(for event: CalEvent) -> String {
+        var timeStr = ""
+        if let startStr = event.start {
+            let fmt = DateFormatter()
+            fmt.dateFormat = "yyyy-MM-dd'T'HH:mm:ssZ"
+            fmt.locale = Locale(identifier: "en_US_POSIX")
+            if let date = fmt.date(from: startStr) {
+                let out = DateFormatter()
+                out.dateStyle = .none
+                out.timeStyle = .short
+                timeStr = out.string(from: date)
             }
         }
+        let title = event.title.count > 30 ? String(event.title.prefix(30)) + "…" : event.title
+        return timeStr.isEmpty ? title : "\(timeStr)  \(title)"
     }
 
     func waitForBackendThenFetch() {
         guard let url = URL(string: "http://localhost:8420/health") else { return }
-        URLSession.shared.dataTask(with: url) { [weak self] data, _, error in
-            try? "health response — data: \(data?.count ?? 0) error: \(error?.localizedDescription ?? "none")".write(toFile: "/tmp/health-debug.txt", atomically: true, encoding: .utf8)
+        URLSession.shared.dataTask(with: url) { [weak self] data, _, _ in
             if let data = data,
                let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
                let ok = json["ok"] as? Bool, ok {
-                try? "waitForBackend success".write(toFile: "/tmp/wait-debug2.txt", atomically: true, encoding: .utf8)
                 self?.fetchTodayCount()
                 self?.pollForChanges()
                 self?.syncSettingsToBackend()
@@ -188,7 +230,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             guard let data = data,
                   let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
                   let _ = json["count"] as? Int else { return }
-            self?.updateMenuBarTitle()
+            self?.fetchNextEventForMenuBar()
         }.resume()
     }
 
@@ -256,6 +298,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             guard let base = NSImage(systemSymbolName: "calendar", accessibilityDescription: "Calendar")?
                 .withSymbolConfiguration(config) else { return }
 
+            let icon: NSImage
             if self.hasUnsyncedChanges {
                 // Draw calendar icon with blue dot overlay
                 let size = NSSize(width: 22, height: 22)
@@ -272,13 +315,24 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                 ring.stroke()
                 composite.unlockFocus()
                 composite.isTemplate = false
-                button.image = composite
+                icon = composite
             } else {
                 base.isTemplate = true
-                button.image = base
+                icon = base
             }
-            button.imagePosition = .imageOnly
-            button.title = ""
+
+            if SettingsStore.shared.showNextEventInMenuBar, let event = self.nextEvent {
+                // Compose icon + text as one attributed string so both share a
+                // baseline — separate image/title layout doesn't align reliably.
+                button.image = nil
+                button.imagePosition = .noImage
+                button.attributedTitle = AppDelegate.menuBarAttributedTitle(icon: icon, event: event)
+            } else {
+                button.attributedTitle = NSAttributedString(string: "")
+                button.image = icon
+                button.imagePosition = .imageOnly
+                button.title = ""
+            }
         }
     }
 
