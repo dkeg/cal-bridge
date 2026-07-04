@@ -17,6 +17,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     var pendingOAuthCompletion: ((String) -> Void)?
     var pollTimer: Timer?
     var cacheRefreshTimer: Timer?
+    var nextEventTimer: Timer?
     var hasUnsyncedChanges = false {
         didSet { updateMenuBarIcon() }
     }
@@ -81,6 +82,21 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         pollTimer = Timer.scheduledTimer(withTimeInterval: 1800, repeats: true) { [weak self] _ in
             self?.pollForChanges()
         }
+        // Dedicated, frequent timer for the menu bar's next-event display — kept
+        // independent of fetchTodayCount so a single failed /today request can't
+        // silently stall it until the next 5-minute cycle.
+        nextEventTimer = Timer.scheduledTimer(withTimeInterval: 60, repeats: true) { [weak self] _ in
+            self?.fetchNextEventForMenuBar()
+        }
+        NSWorkspace.shared.notificationCenter.addObserver(
+            self, selector: #selector(handleWake),
+            name: NSWorkspace.didWakeNotification, object: nil
+        )
+    }
+
+    @objc func handleWake() {
+        fetchNextEventForMenuBar()
+        pollForChanges()
     }
 
     var isHovering = false
@@ -120,6 +136,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             popover.show(relativeTo: button.bounds, of: button, preferredEdge: .minY)
             NSApp.activate(ignoringOtherApps: true)
             syncSettingsToBackend()
+            fetchNextEventForMenuBar()
             Task { @MainActor in
                 self.sharedVM?.resetForNewSession()
                 await self.sharedVM?.autoLoad()
@@ -470,6 +487,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         mouseTimer?.invalidate()
         pollTimer?.invalidate()
         cacheRefreshTimer?.invalidate()
+        nextEventTimer?.invalidate()
+        NSWorkspace.shared.notificationCenter.removeObserver(self)
     }
 }
 // test

@@ -4,6 +4,13 @@ All notable changes to CalBridge are documented here.
 
 ---
 
+## [1.14.1] — 2026-07-04
+
+### Fixed
+- **Menu bar next-event display could go stale** — it only refreshed as a side effect of the `/today` request succeeding, so a single failed request silently skipped the update until the next 5-minute cycle. Added a dedicated 60-second refresh timer, plus immediate refreshes on popover open and on wake from sleep.
+
+---
+
 ## [1.14.0] — 2026-07-03
 
 ### Added
