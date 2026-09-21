@@ -1,6 +1,6 @@
 # CalBridge
 
-A native macOS menu bar app that fetches events from all your Google Calendars and posts a formatted weekly schedule to Notion and/or Obsidian — automatically every Sunday night, or on demand.
+A native macOS menu bar app that fetches events from all your Google Calendars and posts a formatted weekly schedule to Notion, Obsidian, or Bear — automatically every Sunday night, or on demand.
 
 <br>
 
@@ -37,7 +37,8 @@ A native macOS menu bar app that fetches events from all your Google Calendars a
 - ✏️ Preview and edit events before posting
 - 📝 Posts a beautifully formatted day-by-day table to Notion
 - 📓 Obsidian support — sync to your Obsidian vault via Local REST API plugin
-- 🔀 Sync target selector — choose Notion, Obsidian, or Both in Settings
+- 🐻 Bear support — sync to Bear with smart formatting and auto-tagging; no credentials required
+- 🔀 Sync target selector — choose Notion, Obsidian, Bear, or Both in Settings
 - 🗂️ Compact calendar filter dropdown — toggle individual calendars without cluttering the popover
 - 🔁 Auto-runs every Sunday at 9 PM via launchd
 - ✉️ Email notification on every post (manual and autorun)
@@ -84,7 +85,7 @@ chmod +x scripts/install.sh
 - macOS 13+
 - Node.js 18+ (`brew install node`)
 - A Google account
-- A Notion account and/or Obsidian with the Local REST API plugin
+- A Notion account and/or Obsidian with the Local REST API plugin, and/or Bear
 - A [Resend](https://resend.com) account (free tier, for email notifications)
 
 ### First-time setup
@@ -115,6 +116,10 @@ Your credentials are stored securely in macOS Keychain — no `.env` editing nee
 3. Enter it in **Settings → Configuration → Obsidian API Key**
 4. Set your vault path and target folder
 
+### Bear setup
+
+No setup required — just select **Bear** as your sync target in **Settings → General**. CalBridge will create a `#calbridge` tag in Bear automatically on your first sync. You can change the tag name in **Settings → Configuration → Bear tag**.
+
 ### Resend (email notifications)
 
 1. Sign up at [resend.com](https://resend.com)
@@ -129,8 +134,8 @@ Your credentials are stored securely in macOS Keychain — no `.env` editing nee
 2. Hover over the calendar icon — events load instantly
 3. Optionally click **Modify** to change the number of weeks (1–4)
 4. Toggle calendars on/off, edit or remove individual events
-5. Click **Post to Notion →**, **Post to Obsidian →**, or **Post to Both →** depending on your sync target
-6. Button changes to **Open in Notion** or **Open in Obsidian** once posted — persists across relaunches
+5. Click **Post to Notion →**, **Post to Obsidian →**, **Send to Bear →**, or **Post to Both →** depending on your sync target
+6. Button changes to **Open in Notion**, **Open in Obsidian**, or **Open in Bear** once posted — persists across relaunches
 7. Change sync target anytime in **Settings → General**
 8. Enable **Settings → General → Menu bar** to show your next event's time and title next to the icon
 
@@ -200,7 +205,8 @@ CalBridge.app (Swift/SwiftUI)
                  ├── /events     → Google Calendar API
                  ├── /today      → Google Calendar API (badge count)
                  ├── /notion     → Notion API + Resend email
-                 └── /obsidian   → Obsidian Local REST API
+                 ├── /obsidian   → Obsidian Local REST API
+                 └── /bear       → Bear URL scheme (bear://)
 
 launchd agent (Sunday 9 PM)
   └── dist/autorun.js

@@ -8,6 +8,7 @@ import {
   fetchEvents,
   createNotionPage,
   createObsidianPage,
+  createBearNote,
   checkExistingPage,
   groupByDay,
   dateRange,
@@ -15,11 +16,12 @@ import {
 } from "./agent";
 
 interface AppSettings {
-  syncTarget: "notion" | "obsidian" | "both";
+  syncTarget: "notion" | "obsidian" | "bear" | "both";
   obsidianAPIKey: string;
   obsidianVaultPath: string;
   obsidianFolder: string;
   obsidianFilename: string;
+  bearTag: string;
   notificationEmail: string;
 }
 
@@ -34,6 +36,7 @@ function readAppSettings(): AppSettings {
       obsidianVaultPath: data.obsidianVaultPath ?? "",
       obsidianFolder: data.obsidianFolder ?? "Calendar",
       obsidianFilename: data.obsidianFilename ?? "Upcoming Events.md",
+      bearTag: data.bearTag ?? "calbridge",
       notificationEmail: data.notificationEmail ?? "",
     };
   } catch {
@@ -44,6 +47,7 @@ function readAppSettings(): AppSettings {
       obsidianVaultPath: "",
       obsidianFolder: "Calendar",
       obsidianFilename: "Upcoming Events.md",
+      bearTag: "calbridge",
       notificationEmail: "",
     };
   }
@@ -68,6 +72,7 @@ async function main() {
   let notionURL: string | null = null;
   let notionTitle = "";
   let obsidianURL: string | null = null;
+  let bearURL: string | null = null;
 
   // ── Notion ────────────────────────────────────────────────────────────────
   if (settings.syncTarget === "notion" || settings.syncTarget === "both") {
@@ -103,7 +108,16 @@ async function main() {
     }
   }
 
-  const primaryURL = notionURL ?? obsidianURL;
+  // ── Bear ──────────────────────────────────────────────────────────────────
+  if (settings.syncTarget === "bear") {
+    const result = await createBearNote(days, start, end, { tag: settings.bearTag });
+    child_process.execSync(`open "${result.url}"`);
+    bearURL = `bear://x-callback-url/open-note?title=${encodeURIComponent(result.title)}`;
+    if (!notionTitle) notionTitle = result.title;
+    console.log(`[autorun] Sent to Bear: ${result.title}`);
+  }
+
+  const primaryURL = notionURL ?? obsidianURL ?? bearURL;
   const primaryTitle = notionTitle || `Upcoming Events — ${start} to ${end}`;
 
   await sendNotification({
@@ -116,13 +130,14 @@ async function main() {
     email: settings.notificationEmail || undefined,
   });
 
-  writeFlagFile(notionURL, obsidianURL, primaryTitle, start, end);
+  writeFlagFile(notionURL, obsidianURL, bearURL, primaryTitle, start, end);
   console.log(`[autorun] Done — ${new Date().toISOString()}`);
 }
 
 function writeFlagFile(
   notionURL: string | null,
   obsidianURL: string | null,
+  bearURL: string | null,
   title: string,
   start: string,
   end: string,
@@ -132,6 +147,7 @@ function writeFlagFile(
   const flag = {
     notionURL,
     obsidianURL,
+    bearURL,
     notionTitle: title,
     start,
     end,

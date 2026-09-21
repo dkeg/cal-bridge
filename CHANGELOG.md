@@ -4,6 +4,17 @@ All notable changes to CalBridge are documented here.
 
 ---
 
+## [1.15.0] — 2026-09-21
+
+### Added
+- **Bear sync target** — sync your weekly events to Bear as a formatted note via Bear's URL scheme; no credentials or plugins required, works for any Bear user out of the box
+- **Smart create vs replace** — re-syncing the same date range updates the existing Bear note in-place (`add-text?mode=replace`); a new week always creates a fresh note
+- **Auto-tagged Bear notes** — notes are tagged `#calbridge` on first sync; Bear creates the tag automatically; tag is configurable in Settings → Configuration
+- **Bear-native formatting** — all-day events condensed to a single italic line per day, timed events listed with bold time leading each line, `---` dividers between days, shortened day headers (`Mon · Sep 21`)
+- **URL stripping** — bare URLs in event titles and calendar names (e.g. Garmin subscription feed URLs) are stripped before rendering
+
+---
+
 ## [1.14.1] — 2026-07-04
 
 ### Fixed
