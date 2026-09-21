@@ -7,6 +7,7 @@ import {
   fetchEventsWithSync,
   createNotionPage,
   createObsidianPage,
+  createBearNote,
   checkExistingPage,
   groupByDay,
   dateRange,
@@ -30,11 +31,12 @@ const PORT = process.env.PORT ?? 8420;
 export const runtimeSettings = {
   notificationEmail: process.env.NOTIFICATION_EMAIL ?? "drewrcraig.9@gmail.com",
   resendAPIKey: process.env.RESEND_API_KEY ?? "",
-  syncTarget: "notion" as "notion" | "obsidian",
+  syncTarget: "notion" as "notion" | "obsidian" | "bear",
   obsidianAPIKey: "",
   obsidianVaultPath: "",
   obsidianFolder: "Calendar",
   obsidianFilename: "Upcoming Events.md",
+  bearTag: "calbridge",
 };
 
 // ── Health ────────────────────────────────────────────────────────────────
@@ -160,13 +162,14 @@ app.get("/settings", (_req, res) => {
     obsidianFolder: runtimeSettings.obsidianFolder,
     obsidianFilename: runtimeSettings.obsidianFilename,
     obsidianAPIKey: runtimeSettings.obsidianAPIKey ? "••••••••" : "",
+    bearTag: runtimeSettings.bearTag,
   });
 });
 
 // ── POST /settings ────────────────────────────────────────────────────────
 
 app.post("/settings", (req, res) => {
-  const { notificationEmail, resendAPIKey, syncTarget, obsidianAPIKey, obsidianVaultPath, obsidianFolder, obsidianFilename } = req.body;
+  const { notificationEmail, resendAPIKey, syncTarget, obsidianAPIKey, obsidianVaultPath, obsidianFolder, obsidianFilename, bearTag } = req.body;
   if (notificationEmail !== undefined) runtimeSettings.notificationEmail = notificationEmail;
   if (resendAPIKey !== undefined && resendAPIKey !== "") runtimeSettings.resendAPIKey = resendAPIKey;
   if (syncTarget !== undefined) runtimeSettings.syncTarget = syncTarget;
@@ -174,6 +177,7 @@ app.post("/settings", (req, res) => {
   if (obsidianVaultPath !== undefined) runtimeSettings.obsidianVaultPath = obsidianVaultPath;
   if (obsidianFolder !== undefined) runtimeSettings.obsidianFolder = obsidianFolder;
   if (obsidianFilename !== undefined) runtimeSettings.obsidianFilename = obsidianFilename;
+  if (bearTag !== undefined) runtimeSettings.bearTag = bearTag;
   console.log("[settings] updated — syncTarget:", runtimeSettings.syncTarget);
   res.json({ ok: true });
 });
@@ -318,6 +322,19 @@ app.post("/obsidian", async (req, res) => {
     res.json({ ...result, existed: false });
   } catch (e: any) {
     console.error("[/obsidian]", e.message);
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// ── POST /bear ───────────────────────────────────────────────────────────────
+
+app.post("/bear", async (req, res) => {
+  try {
+    const { days, start, end }: { days: DayGroup[]; start: string; end: string } = req.body;
+    const result = await createBearNote(days, start, end, { tag: runtimeSettings.bearTag });
+    res.json(result);
+  } catch (e: any) {
+    console.error("[/bear]", e.message);
     res.status(500).json({ error: e.message });
   }
 });

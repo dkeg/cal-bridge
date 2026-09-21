@@ -24,6 +24,7 @@ class AgentViewModel: ObservableObject {
 
     var syncTarget: String { settings.syncTarget }
     var isObsidian: Bool { settings.syncTarget == "obsidian" }
+    var isBear: Bool { settings.syncTarget == "bear" }
     var isBoth: Bool { settings.syncTarget == "both" }
     @Published var pendingWeeks = 1
     @Published var persistedNotionURL: String? = nil
@@ -212,6 +213,8 @@ class AgentViewModel: ObservableObject {
                 result = notion
             } else if isObsidian {
                 result = try await APIClient.shared.postToObsidian(days: days, start: start, end: end)
+            } else if isBear {
+                result = try await APIClient.shared.postToBear(days: days, start: start, end: end)
             } else {
                 result = try await APIClient.shared.postToNotion(days: days, start: start, end: end)
             }
@@ -534,7 +537,7 @@ struct ContentView: View {
                     Image(systemName: vm.notionExisted ? "exclamationmark.triangle.fill" : "checkmark.circle.fill")
                         .foregroundColor(vm.notionExisted ? .orange : .green)
                         .font(.caption)
-                    Text(vm.notionExisted ? "Already existed — \(title)" : (vm.isObsidian ? "Written to Obsidian — \(title)" : vm.isBoth ? "Posted to Notion & Obsidian — \(title)" : "Posted to Notion — \(title)"))
+                    Text(vm.notionExisted ? "Already existed — \(title)" : (vm.isObsidian ? "Written to Obsidian — \(title)" : vm.isBear ? "Sent to Bear — \(title)" : vm.isBoth ? "Posted to Notion & Obsidian — \(title)" : "Posted to Notion — \(title)"))
                         .font(.caption)
                         .foregroundColor(.secondary)
                 }
@@ -567,7 +570,7 @@ struct ContentView: View {
     var loadingView: some View {
         HStack(spacing: 10) {
             ProgressView().scaleEffect(0.8)
-            Text(vm.step == .posting ? (vm.isBoth ? "Posting to Notion & Obsidian…" : vm.isObsidian ? "Writing to Obsidian…" : "Creating Notion page…") : "Fetching \(vm.weeksAhead * 7) days of events…")
+            Text(vm.step == .posting ? (vm.isBoth ? "Posting to Notion & Obsidian…" : vm.isObsidian ? "Writing to Obsidian…" : vm.isBear ? "Sending to Bear…" : "Creating Notion page…") : "Fetching \(vm.weeksAhead * 7) days of events…")
                 .font(.system(size: 12))
                 .foregroundColor(.secondary)
             Spacer()
@@ -618,13 +621,13 @@ struct ContentView: View {
                 Button {
                     NSWorkspace.shared.open(nsURL)
                 } label: {
-                    Label(vm.isObsidian ? "Open in Obsidian" : "Open in Notion →", systemImage: "arrow.up.right.square")
+                    Label(vm.isObsidian ? "Open in Obsidian" : vm.isBear ? "Open in Bear" : "Open in Notion →", systemImage: "arrow.up.right.square")
                         .font(.system(size: 12))
                 }
                 .buttonStyle(.borderedProminent)
                 .controlSize(.regular)
             } else {
-                Button(vm.isBoth ? "Post to Both →" : vm.isObsidian ? "Post to Obsidian →" : "Post to Notion →") { Task { await vm.post() } }
+                Button(vm.isBoth ? "Post to Both →" : vm.isObsidian ? "Post to Obsidian →" : vm.isBear ? "Send to Bear →" : "Post to Notion →") { Task { await vm.post() } }
                     .buttonStyle(.borderedProminent)
                     .controlSize(.regular)
                     .disabled(vm.step == .fetching || vm.step == .posting)

@@ -656,6 +656,50 @@ function formatTime(iso: string): string {
   return d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
 }
 
+// ── Bear Integration ──────────────────────────────────────────────────────
+
+export async function createBearNote(
+  days: DayGroup[],
+  start: string,
+  end: string,
+  options: { tag?: string }
+): Promise<{ url: string; title: string }> {
+  const totalEvents = days.reduce((sum, d) => sum + d.events.length, 0);
+  const title = `Upcoming Events — ${start} to ${end}`;
+
+  const lines: string[] = [
+    `*${formatDisplayDate(start)} → ${formatDisplayDate(end)} · ${totalEvents} events*`,
+    ``,
+  ];
+
+  for (const day of days) {
+    lines.push(`## ${formatDayHeader(day.date)}`);
+    for (const event of day.events) {
+      const time = event.allDay
+        ? "All day"
+        : `${formatTime(event.start ?? "")} – ${formatTime(event.end ?? "")}`;
+      lines.push(`- **${time}** · ${event.title} · *${event.calendar}*`);
+    }
+    lines.push(``);
+  }
+
+  // Embed tag as hashtag in content — Bear reads it natively and auto-creates
+  // the tag on first use. URL param is a backup for clients that support it.
+  if (options.tag) {
+    lines.push(`#${options.tag}`);
+  }
+
+  const text = lines.join("\n");
+  const params = new URLSearchParams({ title, text });
+  if (options.tag) params.set("tags", options.tag);
+  params.set("open_note", "yes");
+
+  return {
+    url: `bear://x-callback-url/create?${params.toString()}`,
+    title,
+  };
+}
+
 // ── Obsidian folder creation helper ──────────────────────────────────────
 
 export async function ensureObsidianFolder(folder: string, apiKey: string): Promise<void> {

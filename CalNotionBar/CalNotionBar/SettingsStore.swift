@@ -20,6 +20,11 @@ class SettingsStore: ObservableObject {
         didSet { defaults.set(syncTarget, forKey: "syncTarget") }
     }
 
+    // MARK: - Bear
+    @Published var bearTag: String {
+        didSet { defaults.set(bearTag, forKey: "bearTag") }
+    }
+
     // MARK: - Obsidian
     @Published var obsidianAPIKey: String {
         didSet { defaults.set(obsidianAPIKey, forKey: "obsidianAPIKey") }
@@ -61,6 +66,7 @@ class SettingsStore: ObservableObject {
         defaultWeeks = defaults.integer(forKey: "defaultWeeks").nonZero ?? 1
         disabledCalendarIDs = Set(defaults.stringArray(forKey: "disabledCalendarIDs") ?? [])
         syncTarget = defaults.string(forKey: "syncTarget") ?? "notion"
+        bearTag = defaults.string(forKey: "bearTag") ?? "calbridge"
         obsidianAPIKey = defaults.string(forKey: "obsidianAPIKey") ?? ""
         obsidianVaultPath = defaults.string(forKey: "obsidianVaultPath") ?? ""
         obsidianFolder = defaults.string(forKey: "obsidianFolder") ?? "Calendar"
@@ -85,6 +91,7 @@ class SettingsStore: ObservableObject {
             "obsidianVaultPath": obsidianVaultPath,
             "obsidianFolder": obsidianFolder,
             "obsidianFilename": obsidianFilename,
+            "bearTag": bearTag,
         ]
         req.httpBody = try? JSONSerialization.data(withJSONObject: body)
         URLSession.shared.dataTask(with: req) { _, _, err in
@@ -109,6 +116,7 @@ extension SettingsStore {
             defaults.removeObject(forKey: "lastEnd")
         }
         syncTarget = newTarget
+        bearTag = defaults.string(forKey: "bearTag") ?? "calbridge"
         obsidianAPIKey = defaults.string(forKey: "obsidianAPIKey") ?? ""
         obsidianVaultPath = defaults.string(forKey: "obsidianVaultPath") ?? ""
         obsidianFolder = defaults.string(forKey: "obsidianFolder") ?? "Calendar"

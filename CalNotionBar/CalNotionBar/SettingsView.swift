@@ -72,6 +72,7 @@ struct SettingsView: View {
                 Picker("", selection: $store.syncTarget) {
                     Text("Notion").tag("notion")
                     Text("Obsidian").tag("obsidian")
+                    Text("Bear").tag("bear")
                     Text("Both").tag("both")
                 }
                 .pickerStyle(.segmented)
@@ -160,6 +161,20 @@ struct SettingsView: View {
                 SecureField("re_xxxxxxxxxxxx", text: $store.resendAPIKey)
                     .textFieldStyle(.roundedBorder)
                     .frame(width: 200)
+            }
+
+            if store.syncTarget == "bear" {
+                Divider()
+
+                settingsRow(label: "Bear tag") {
+                    TextField("calbridge", text: $store.bearTag)
+                        .textFieldStyle(.roundedBorder)
+                        .frame(width: 200)
+                }
+                Text("Auto-created in Bear on first sync. Leave blank for no tag.")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+                    .padding(.leading, 134)
             }
 
             if store.syncTarget == "obsidian" || store.syncTarget == "both" {

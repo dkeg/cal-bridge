@@ -1,4 +1,5 @@
 import Foundation
+import AppKit
 
 // MARK: - Models
 
@@ -127,6 +128,36 @@ class APIClient {
         req.httpBody = try JSONSerialization.data(withJSONObject: body)
         let (data, _) = try await URLSession.shared.data(for: req)
         return (try? JSONDecoder().decode(NotionResult.self, from: data)) ?? NotionResult()
+    }
+
+    func postToBear(days: [DayGroup], start: String, end: String) async throws -> NotionResult {
+        var req = URLRequest(url: URL(string: "\(base)/bear")!)
+        req.httpMethod = "POST"
+        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        let daysPayload = days.map { day -> [String: Any] in [
+            "date": day.date,
+            "events": day.events.map { e -> [String: Any] in [
+                "date": e.date,
+                "start": e.start as Any,
+                "end": e.end as Any,
+                "title": e.title,
+                "calendar": e.calendar,
+                "allDay": e.allDay
+            ]}
+        ]}
+        let body: [String: Any] = ["days": daysPayload, "start": start, "end": end]
+        req.httpBody = try JSONSerialization.data(withJSONObject: body)
+        let (data, _) = try await URLSession.shared.data(for: req)
+        let result = (try? JSONDecoder().decode(NotionResult.self, from: data)) ?? NotionResult()
+        // url from backend is the bear:// create URL — open it to create the note
+        if let createURLString = result.url, let createURL = URL(string: createURLString) {
+            NSWorkspace.shared.open(createURL)
+        }
+        // Return open-note URL for the "Open in Bear" button
+        let openURL: String? = result.title.flatMap {
+            "bear://x-callback-url/open-note?title=\($0.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? $0)"
+        }
+        return NotionResult(url: openURL, id: nil, title: result.title, existed: false)
     }
 
     func postToNotion(days: [DayGroup], start: String, end: String) async throws -> NotionResult {
