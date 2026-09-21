@@ -277,32 +277,41 @@ struct SettingsView: View {
     }
 
     func checkForUpdates() {
-        guard let url = URL(string: "https://api.github.com/repos/dkeg/cal-bridge/releases/latest") else { return }
-        URLSession.shared.dataTask(with: url) { data, _, _ in
-            guard let data = data,
-                  let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-                  let tag = json["tag_name"] as? String else { return }
+        DispatchQueue.global().async {
+            let task = Process()
+            task.launchPath = "/bin/sh"
+            task.arguments = ["-c", "brew outdated --cask cal-bridge 2>/dev/null"]
+            let outPipe = Pipe()
+            task.standardOutput = outPipe
+            task.standardError = Pipe()
+            var isOutdated = false
+            do {
+                try task.run()
+                task.waitUntilExit()
+                let out = String(data: outPipe.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8) ?? ""
+                isOutdated = out.contains("cal-bridge")
+            } catch {}
+
             DispatchQueue.main.async {
                 let current = "v\(SettingsView.appVersion)"
-                let isNewer = tag.compare(current, options: .numeric) == .orderedDescending
-                if isNewer {
-                    let alert = NSAlert()
-                    alert.messageText = "Update available: \(tag)"
-                    alert.informativeText = "You are on \(current). Visit GitHub to download the latest version."
-                    alert.addButton(withTitle: "Open GitHub")
+                let alert = NSAlert()
+                if isOutdated {
+                    alert.messageText = "Update available"
+                    alert.informativeText = "A newer version is available. Run in Terminal:\n\nbrew upgrade --cask cal-bridge"
+                    alert.addButton(withTitle: "Open Terminal")
                     alert.addButton(withTitle: "Dismiss")
                     if alert.runModal() == .alertFirstButtonReturn {
-                        NSWorkspace.shared.open(URL(string: "https://github.com/dkeg/cal-bridge/releases")!)
+                        let script = "tell application \"Terminal\"\nactivate\ndo script \"brew upgrade --cask cal-bridge\"\nend tell"
+                        NSAppleScript(source: script)?.executeAndReturnError(nil)
                     }
                 } else {
-                    let alert = NSAlert()
                     alert.messageText = "You're up to date"
                     alert.informativeText = "\(current) is the latest version."
                     alert.addButton(withTitle: "OK")
                     alert.runModal()
                 }
             }
-        }.resume()
+        }
     }
 }
 
