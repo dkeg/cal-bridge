@@ -330,8 +330,8 @@ app.post("/obsidian", async (req, res) => {
 
 app.post("/bear", async (req, res) => {
   try {
-    const { days, start, end }: { days: DayGroup[]; start: string; end: string } = req.body;
-    const result = await createBearNote(days, start, end, { tag: runtimeSettings.bearTag });
+    const { days, start, end, lastTitle }: { days: DayGroup[]; start: string; end: string; lastTitle?: string } = req.body;
+    const result = await createBearNote(days, start, end, { tag: runtimeSettings.bearTag, lastTitle });
     res.json(result);
   } catch (e: any) {
     console.error("[/bear]", e.message);

@@ -662,14 +662,27 @@ function stripURLs(text: string): string {
   return text.replace(/https?:\/\/\S+/g, "").replace(/\s{2,}/g, " ").trim();
 }
 
+function bearFmtTime(iso: string): string {
+  if (!iso) return "";
+  return new Date(iso).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+}
+
+function bearFmtDayHeader(dateStr: string): string {
+  const d = new Date(dateStr + "T12:00:00");
+  const weekday = d.toLocaleDateString([], { weekday: "short" });
+  const month = d.toLocaleDateString([], { month: "short" });
+  return `${weekday} · ${month} ${d.getDate()}`;
+}
+
 export async function createBearNote(
   days: DayGroup[],
   start: string,
   end: string,
-  options: { tag?: string }
+  options: { tag?: string; lastTitle?: string }
 ): Promise<{ url: string; title: string }> {
   const totalEvents = days.reduce((sum, d) => sum + d.events.length, 0);
   const title = `Upcoming Events — ${start} to ${end}`;
+  const replace = options.lastTitle === title;
 
   const lines: string[] = [
     `*${formatDisplayDate(start)} → ${formatDisplayDate(end)} · ${totalEvents} events*`,
@@ -677,30 +690,30 @@ export async function createBearNote(
   ];
 
   for (const day of days) {
-    lines.push(`## ${formatDayHeader(day.date)}`);
+    lines.push(`---`);
+    lines.push(``);
+    lines.push(`## ${bearFmtDayHeader(day.date)}`);
     lines.push(``);
 
     const allDay = day.events.filter((e) => e.allDay);
     const timed = day.events.filter((e) => !e.allDay);
 
     if (allDay.length > 0) {
-      lines.push(`**All Day**`);
-      for (const e of allDay) {
-        const cal = stripURLs(e.calendar);
-        lines.push(`- ${stripURLs(e.title)}${cal ? ` · *${cal}*` : ``}`);
-      }
+      const allDayList = allDay
+        .map((e) => stripURLs(e.title))
+        .filter(Boolean)
+        .join(" · ");
+      lines.push(`*All day —* ${allDayList}`);
       lines.push(``);
     }
 
-    if (timed.length > 0) {
-      if (allDay.length > 0) lines.push(`**Scheduled**`);
-      for (const e of timed) {
-        const time = `${formatTime(e.start ?? "")} – ${formatTime(e.end ?? "")}`;
-        const cal = stripURLs(e.calendar);
-        lines.push(`- ${time} · ${stripURLs(e.title)}${cal ? ` · *${cal}*` : ``}`);
-      }
-      lines.push(``);
+    for (const e of timed) {
+      const time = `${bearFmtTime(e.start ?? "")} – ${bearFmtTime(e.end ?? "")}`;
+      const cal = stripURLs(e.calendar);
+      lines.push(`**${time}** · ${stripURLs(e.title)}${cal ? ` · *${cal}*` : ``}`);
     }
+
+    if (timed.length > 0) lines.push(``);
   }
 
   if (options.tag) {
@@ -709,10 +722,11 @@ export async function createBearNote(
 
   const text = lines.join("\n");
 
-  return {
-    url: `bear://x-callback-url/create?title=${encodeURIComponent(title)}&text=${encodeURIComponent(text)}&open_note=yes`,
-    title,
-  };
+  const url = replace
+    ? `bear://x-callback-url/add-text?title=${encodeURIComponent(title)}&text=${encodeURIComponent(text)}&mode=replace&open_note=yes`
+    : `bear://x-callback-url/create?title=${encodeURIComponent(title)}&text=${encodeURIComponent(text)}&open_note=yes`;
+
+  return { url, title };
 }
 
 // ── Obsidian folder creation helper ──────────────────────────────────────

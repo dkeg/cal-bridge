@@ -145,13 +145,14 @@ class APIClient {
                 "allDay": e.allDay
             ]}
         ]}
-        let body: [String: Any] = ["days": daysPayload, "start": start, "end": end]
+        let lastTitle = UserDefaults.standard.string(forKey: "lastNotionTitle") ?? ""
+        let body: [String: Any] = ["days": daysPayload, "start": start, "end": end, "lastTitle": lastTitle]
         req.httpBody = try JSONSerialization.data(withJSONObject: body)
         let (data, _) = try await URLSession.shared.data(for: req)
         let result = (try? JSONDecoder().decode(NotionResult.self, from: data)) ?? NotionResult()
-        // url from backend is the bear:// create URL — open it to create the note
-        if let createURLString = result.url, let createURL = URL(string: createURLString) {
-            NSWorkspace.shared.open(createURL)
+        // url is either a create or add-text?mode=replace URL — open it either way
+        if let bearURLString = result.url, let bearURL = URL(string: bearURLString) {
+            NSWorkspace.shared.open(bearURL)
         }
         // Return open-note URL for the "Open in Bear" button
         let openURL: String? = result.title.flatMap {
