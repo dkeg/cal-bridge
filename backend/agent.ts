@@ -658,6 +658,10 @@ function formatTime(iso: string): string {
 
 // ── Bear Integration ──────────────────────────────────────────────────────
 
+function stripURLs(text: string): string {
+  return text.replace(/https?:\/\/\S+/g, "").replace(/\s{2,}/g, " ").trim();
+}
+
 export async function createBearNote(
   days: DayGroup[],
   start: string,
@@ -674,27 +678,39 @@ export async function createBearNote(
 
   for (const day of days) {
     lines.push(`## ${formatDayHeader(day.date)}`);
-    for (const event of day.events) {
-      const time = event.allDay
-        ? "All day"
-        : `${formatTime(event.start ?? "")} – ${formatTime(event.end ?? "")}`;
-      lines.push(`- **${time}** · ${event.title} · *${event.calendar}*`);
-    }
     lines.push(``);
+
+    const allDay = day.events.filter((e) => e.allDay);
+    const timed = day.events.filter((e) => !e.allDay);
+
+    if (allDay.length > 0) {
+      lines.push(`**All Day**`);
+      for (const e of allDay) {
+        const cal = stripURLs(e.calendar);
+        lines.push(`- ${stripURLs(e.title)}${cal ? ` · *${cal}*` : ``}`);
+      }
+      lines.push(``);
+    }
+
+    if (timed.length > 0) {
+      if (allDay.length > 0) lines.push(`**Scheduled**`);
+      for (const e of timed) {
+        const time = `${formatTime(e.start ?? "")} – ${formatTime(e.end ?? "")}`;
+        const cal = stripURLs(e.calendar);
+        lines.push(`- ${time} · ${stripURLs(e.title)}${cal ? ` · *${cal}*` : ``}`);
+      }
+      lines.push(``);
+    }
   }
 
-  // Embed tag as hashtag in content — Bear reads it natively and auto-creates
-  // the tag on first use. URL param is a backup for clients that support it.
   if (options.tag) {
     lines.push(`#${options.tag}`);
   }
 
   const text = lines.join("\n");
-  const params = new URLSearchParams({ title, text });
-  params.set("open_note", "yes");
 
   return {
-    url: `bear://x-callback-url/create?${params.toString()}`,
+    url: `bear://x-callback-url/create?title=${encodeURIComponent(title)}&text=${encodeURIComponent(text)}&open_note=yes`,
     title,
   };
 }
