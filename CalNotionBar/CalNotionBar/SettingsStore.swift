@@ -16,8 +16,12 @@ class SettingsStore: ObservableObject {
     }
 
     // MARK: - Sync Target
-    @Published var syncTarget: String {
-        didSet { defaults.set(syncTarget, forKey: "syncTarget") }
+    @Published var syncTargets: Set<String> {
+        didSet {
+            defaults.set(Array(syncTargets), forKey: "syncTargets")
+            // keep legacy key for autorun compatibility
+            defaults.set(syncTargets.sorted().joined(separator: ","), forKey: "syncTarget")
+        }
     }
 
     // MARK: - Bear
@@ -65,7 +69,13 @@ class SettingsStore: ObservableObject {
     private init() {
         defaultWeeks = defaults.integer(forKey: "defaultWeeks").nonZero ?? 1
         disabledCalendarIDs = Set(defaults.stringArray(forKey: "disabledCalendarIDs") ?? [])
-        syncTarget = defaults.string(forKey: "syncTarget") ?? "notion"
+        // migrate legacy single-value "syncTarget" to new "syncTargets" array
+        if defaults.array(forKey: "syncTargets") == nil,
+           let old = defaults.string(forKey: "syncTarget") {
+            let migrated: Set<String> = old == "both" ? ["notion", "obsidian"] : [old]
+            defaults.set(Array(migrated), forKey: "syncTargets")
+        }
+        syncTargets = Set(defaults.stringArray(forKey: "syncTargets") ?? ["notion"])
         bearTag = defaults.string(forKey: "bearTag") ?? "calbridge"
         obsidianAPIKey = defaults.string(forKey: "obsidianAPIKey") ?? ""
         obsidianVaultPath = defaults.string(forKey: "obsidianVaultPath") ?? ""
@@ -86,7 +96,7 @@ class SettingsStore: ObservableObject {
         let body: [String: Any] = [
             "notificationEmail": notificationEmail,
             "resendAPIKey": resendAPIKey,
-            "syncTarget": syncTarget,
+            "syncTarget": syncTargets.sorted().joined(separator: ","),
             "obsidianAPIKey": obsidianAPIKey,
             "obsidianVaultPath": obsidianVaultPath,
             "obsidianFolder": obsidianFolder,
@@ -107,15 +117,15 @@ private extension Int {
 
 extension SettingsStore {
     func reload() {
-        let newTarget = defaults.string(forKey: "syncTarget") ?? "notion"
-        if newTarget != syncTarget {
+        let newTargets = Set(defaults.stringArray(forKey: "syncTargets") ?? ["notion"])
+        if newTargets != syncTargets {
             // Target changed — clear persisted URL so button resets
             defaults.removeObject(forKey: "lastNotionURL")
             defaults.removeObject(forKey: "lastNotionTitle")
             defaults.removeObject(forKey: "lastStart")
             defaults.removeObject(forKey: "lastEnd")
         }
-        syncTarget = newTarget
+        syncTargets = newTargets
         bearTag = defaults.string(forKey: "bearTag") ?? "calbridge"
         obsidianAPIKey = defaults.string(forKey: "obsidianAPIKey") ?? ""
         obsidianVaultPath = defaults.string(forKey: "obsidianVaultPath") ?? ""

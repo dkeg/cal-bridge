@@ -22,10 +22,50 @@ class AgentViewModel: ObservableObject {
     @Published var hasUnsyncedChanges = false
     let settings = SettingsStore.shared
 
-    var syncTarget: String { settings.syncTarget }
-    var isObsidian: Bool { settings.syncTarget == "obsidian" }
-    var isBear: Bool { settings.syncTarget == "bear" }
-    var isBoth: Bool { settings.syncTarget == "both" }
+    var syncTargets: Set<String> { settings.syncTargets }
+    var hasNotion: Bool { syncTargets.contains("notion") }
+    var hasObsidian: Bool { syncTargets.contains("obsidian") }
+    var hasBear: Bool { syncTargets.contains("bear") }
+
+    private var targetNames: [String] {
+        var n: [String] = []
+        if hasNotion { n.append("Notion") }
+        if hasObsidian { n.append("Obsidian") }
+        if hasBear { n.append("Bear") }
+        return n
+    }
+    var targetLabel: String {
+        switch targetNames.count {
+        case 0: return "—"
+        case 1: return targetNames[0]
+        case 2: return "\(targetNames[0]) & \(targetNames[1])"
+        default: return "all targets"
+        }
+    }
+    var postButtonLabel: String {
+        if syncTargets.count > 1 { return "Sync to \(targetLabel) →" }
+        if hasBear    { return "Send to Bear →" }
+        if hasObsidian { return "Post to Obsidian →" }
+        return "Post to Notion →"
+    }
+    var openButtonLabel: String {
+        if hasNotion   { return "Open in Notion →" }
+        if hasObsidian { return "Open in Obsidian" }
+        return "Open in Bear"
+    }
+    var postingLabel: String {
+        if syncTargets.count > 1 { return "Syncing to \(targetLabel)…" }
+        if hasBear    { return "Sending to Bear…" }
+        if hasObsidian { return "Writing to Obsidian…" }
+        return "Creating Notion page…"
+    }
+    var doneLabel: String {
+        let t = notionTitle ?? ""
+        if syncTargets.count > 1 { return "Synced to \(targetLabel) — \(t)" }
+        if hasBear    { return "Sent to Bear — \(t)" }
+        if hasObsidian { return "Written to Obsidian — \(t)" }
+        return "Posted to Notion — \(t)"
+    }
     @Published var pendingWeeks = 1
     @Published var persistedNotionURL: String? = nil
     @Published var persistedNotionTitle: String? = nil
@@ -205,18 +245,21 @@ class AgentViewModel: ObservableObject {
     func post() async {
         step = .posting
         do {
-            let result: NotionResult
-            if isBoth {
-                async let notionResult = APIClient.shared.postToNotion(days: days, start: start, end: end)
-                async let obsidianResult = APIClient.shared.postToObsidian(days: days, start: start, end: end)
-                let (notion, _) = try await (notionResult, obsidianResult)
-                result = notion
-            } else if isObsidian {
-                result = try await APIClient.shared.postToObsidian(days: days, start: start, end: end)
-            } else if isBear {
-                result = try await APIClient.shared.postToBear(days: days, start: start, end: end)
-            } else {
-                result = try await APIClient.shared.postToNotion(days: days, start: start, end: end)
+            var result: NotionResult? = nil
+            if hasNotion {
+                let r = try await APIClient.shared.postToNotion(days: days, start: start, end: end)
+                result = result ?? r
+            }
+            if hasObsidian {
+                let r = try await APIClient.shared.postToObsidian(days: days, start: start, end: end)
+                result = result ?? r
+            }
+            if hasBear {
+                let r = try await APIClient.shared.postToBear(days: days, start: start, end: end)
+                result = result ?? r
+            }
+            guard let result else {
+                throw NSError(domain: "CalBridge", code: 0, userInfo: [NSLocalizedDescriptionKey: "No sync targets selected"])
             }
             notionURL = result.url
             notionTitle = result.title
@@ -537,7 +580,7 @@ struct ContentView: View {
                     Image(systemName: vm.notionExisted ? "exclamationmark.triangle.fill" : "checkmark.circle.fill")
                         .foregroundColor(vm.notionExisted ? .orange : .green)
                         .font(.caption)
-                    Text(vm.notionExisted ? "Already existed — \(title)" : (vm.isObsidian ? "Written to Obsidian — \(title)" : vm.isBear ? "Sent to Bear — \(title)" : vm.isBoth ? "Posted to Notion & Obsidian — \(title)" : "Posted to Notion — \(title)"))
+                    Text(vm.notionExisted ? "Already existed — \(title)" : vm.doneLabel)
                         .font(.caption)
                         .foregroundColor(.secondary)
                 }
@@ -570,7 +613,7 @@ struct ContentView: View {
     var loadingView: some View {
         HStack(spacing: 10) {
             ProgressView().scaleEffect(0.8)
-            Text(vm.step == .posting ? (vm.isBoth ? "Posting to Notion & Obsidian…" : vm.isObsidian ? "Writing to Obsidian…" : vm.isBear ? "Sending to Bear…" : "Creating Notion page…") : "Fetching \(vm.weeksAhead * 7) days of events…")
+            Text(vm.step == .posting ? vm.postingLabel : "Fetching \(vm.weeksAhead * 7) days of events…")
                 .font(.system(size: 12))
                 .foregroundColor(.secondary)
             Spacer()
@@ -621,13 +664,13 @@ struct ContentView: View {
                 Button {
                     NSWorkspace.shared.open(nsURL)
                 } label: {
-                    Label(vm.isObsidian ? "Open in Obsidian" : vm.isBear ? "Open in Bear" : "Open in Notion →", systemImage: "arrow.up.right.square")
+                    Label(vm.openButtonLabel, systemImage: "arrow.up.right.square")
                         .font(.system(size: 12))
                 }
                 .buttonStyle(.borderedProminent)
                 .controlSize(.regular)
             } else {
-                Button(vm.isBoth ? "Post to Both →" : vm.isObsidian ? "Post to Obsidian →" : vm.isBear ? "Send to Bear →" : "Post to Notion →") { Task { await vm.post() } }
+                Button(vm.postButtonLabel) { Task { await vm.post() } }
                     .buttonStyle(.borderedProminent)
                     .controlSize(.regular)
                     .disabled(vm.step == .fetching || vm.step == .posting)
@@ -636,6 +679,13 @@ struct ContentView: View {
         .padding(.horizontal, 14)
         .padding(.vertical, 10)
     }
+}
+
+private func stripURLs(_ s: String) -> String {
+    guard let re = try? NSRegularExpression(pattern: "https?://\\S+") else { return s }
+    let r = NSRange(s.startIndex..., in: s)
+    return re.stringByReplacingMatches(in: s, range: r, withTemplate: "")
+        .trimmingCharacters(in: .whitespaces)
 }
 
 struct EventRow: View {
@@ -660,12 +710,14 @@ struct EventRow: View {
                 Button("Save", action: onSave).font(.caption)
                 Button("✕", action: onCancel).font(.caption).foregroundColor(.secondary)
             } else {
-                Text(event.title).font(.caption).lineLimit(1)
+                Text(stripURLs(event.title)).font(.caption).lineLimit(1)
                 Spacer()
-                Text(event.calendar)
-                    .font(.caption2).foregroundColor(.secondary)
-                    .padding(.horizontal, 6).padding(.vertical, 2)
-                    .background(Color.secondary.opacity(0.1)).cornerRadius(4)
+                if !stripURLs(event.calendar).isEmpty {
+                    Text(stripURLs(event.calendar))
+                        .font(.caption2).foregroundColor(.secondary)
+                        .padding(.horizontal, 6).padding(.vertical, 2)
+                        .background(Color.secondary.opacity(0.1)).cornerRadius(4)
+                }
                 Button(action: onEdit) { Image(systemName: "pencil").font(.caption2) }
                     .buttonStyle(.plain).foregroundColor(.secondary)
                 Button(action: onRemove) { Image(systemName: "xmark").font(.caption2) }

@@ -65,18 +65,26 @@ struct SettingsView: View {
 
     var generalTab: some View {
         VStack(alignment: .leading, spacing: 20) {
-            // Sync target
-            HStack {
-                Text("Sync target")
+            // Sync targets
+            HStack(alignment: .top) {
+                Text("Sync to")
                     .frame(width: 130, alignment: .leading)
-                Picker("", selection: $store.syncTarget) {
-                    Text("Notion").tag("notion")
-                    Text("Obsidian").tag("obsidian")
-                    Text("Bear").tag("bear")
-                    Text("Both").tag("both")
+                    .padding(.top, 2)
+                VStack(alignment: .leading, spacing: 6) {
+                    ForEach([("notion", "Notion"), ("obsidian", "Obsidian"), ("bear", "Bear")], id: \.0) { key, label in
+                        Toggle(label, isOn: Binding(
+                            get: { store.syncTargets.contains(key) },
+                            set: { on in
+                                if on {
+                                    store.syncTargets.insert(key)
+                                } else if store.syncTargets.count > 1 {
+                                    store.syncTargets.remove(key)
+                                }
+                            }
+                        ))
+                        .toggleStyle(.checkbox)
+                    }
                 }
-                .pickerStyle(.segmented)
-                .frame(width: 220)
             }
 
             Divider()
@@ -163,7 +171,7 @@ struct SettingsView: View {
                     .frame(width: 200)
             }
 
-            if store.syncTarget == "bear" {
+            if store.syncTargets.contains("bear") {
                 Divider()
 
                 settingsRow(label: "Bear tag") {
@@ -177,7 +185,7 @@ struct SettingsView: View {
                     .padding(.leading, 134)
             }
 
-            if store.syncTarget == "obsidian" || store.syncTarget == "both" {
+            if store.syncTargets.contains("obsidian") {
                 Divider()
 
                 settingsRow(label: "Obsidian API key") {
