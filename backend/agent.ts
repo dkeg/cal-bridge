@@ -691,7 +691,6 @@ export async function createBearNote(
 
   const text = lines.join("\n");
   const params = new URLSearchParams({ title, text });
-  if (options.tag) params.set("tags", options.tag);
   params.set("open_note", "yes");
 
   return {
