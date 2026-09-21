@@ -4,6 +4,15 @@ All notable changes to CalBridge are documented here.
 
 ---
 
+## [1.15.1] — 2026-09-21
+
+### Changed
+- **Multi-select sync targets** — replaced the single Picker (Notion/Obsidian/Bear/Both) with three independent checkboxes; any combination can be enabled simultaneously
+- **URL stripping in event list** — bare URLs in event titles and calendar names are stripped in the popover preview, matching the existing backend behavior
+- **Check for updates uses Homebrew** — the About tab now runs `brew outdated --cask cal-bridge` instead of hitting the GitHub releases API; "Open Terminal" button runs the upgrade automatically
+
+---
+
 ## [1.15.0] — 2026-09-21
 
 ### Added
